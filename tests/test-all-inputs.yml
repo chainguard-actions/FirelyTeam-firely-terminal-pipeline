@@ -1,0 +1,41 @@
+name: Test all optional inputs (validators disabled)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy fixture package.json to workspace root so FHIR version detection works
+      - name: Setup fixture files
+        run: |
+          cp $GITHUB_WORKSPACE/actions/hardened/FirelyTeam--firely-terminal-pipeline/v0.8.7/tests/fixtures/package.json $GITHUB_WORKSPACE/package.json
+          mkdir -p $GITHUB_WORKSPACE/conformance
+          mkdir -p $GITHUB_WORKSPACE/examples
+          echo "Fixture files ready"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_EXAMPLES: examples
+          PATH_TO_QUALITY_CONTROL_RULES: minimal
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_OPTIONS: ""
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+          JAVA_VALIDATION_OPTIONS: "-output-style compact"
+          SUSHI_USE_CONFIG_DEPENDENCIES: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          TERMINOLOGY_SERVICE_BFARM_ENABLED: false
+          JAVA_SNAPSHOT_ENABLED: false
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed with all optional inputs provided"
+          echo "PASS"

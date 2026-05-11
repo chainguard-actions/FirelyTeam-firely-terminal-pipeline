@@ -1,0 +1,31 @@
+name: Test basic usage (validators disabled)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy fixture package.json to workspace root so FHIR version detection works
+      - name: Setup fixture files
+        run: |
+          cp $GITHUB_WORKSPACE/actions/hardened/FirelyTeam--firely-terminal-pipeline/v0.8.7/tests/fixtures/package.json $GITHUB_WORKSPACE/package.json
+          mkdir -p $GITHUB_WORKSPACE/conformance
+          echo "Fixture files ready"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_QUALITY_CONTROL_RULES: minimal
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed without error"
+          echo "PASS"
