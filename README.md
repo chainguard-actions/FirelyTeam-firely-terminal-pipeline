@@ -9,6 +9,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
 | v0.8.7 | [`v0.8.7`](https://github.com/chainguard-actions/firely-terminal-pipeline/tree/v0.8.7) | — |
+| v0.8.8 | [`v0.8.8`](https://github.com/chainguard-actions/firely-terminal-pipeline/tree/v0.8.8) | — |
 
 ## Privacy
 
