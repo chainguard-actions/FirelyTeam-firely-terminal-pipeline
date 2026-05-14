@@ -1,0 +1,37 @@
+name: Test FIRELY_TERMINAL_VALIDATOR_ENGINE input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json and directories
+        run: |
+          mkdir -p conformance
+          cat > package.json <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_QUALITY_CONTROL_RULES: minimal
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+
+      - name: Assert action completed
+        run: |
+          echo "Action completed successfully with FIRELY_TERMINAL_VALIDATOR_ENGINE=firely"
+          echo "PASS"
