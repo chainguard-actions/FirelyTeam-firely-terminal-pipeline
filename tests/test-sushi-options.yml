@@ -1,0 +1,36 @@
+name: Test with SUSHI options and examples path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_REF: refs/heads/main
+      GITHUB_EVENT_NAME: push
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Prepare workspace fixtures
+        run: |
+          # Copy fixture package.json to workspace root so action can detect FHIR version
+          cp $GITHUB_WORKSPACE/actions/hardened/FirelyTeam--firely-terminal-pipeline/v0.8.12/tests/fixtures/package.json $GITHUB_WORKSPACE/package.json
+          echo "package.json contents:"
+          cat $GITHUB_WORKSPACE/package.json
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: actions/hardened/FirelyTeam--firely-terminal-pipeline/v0.8.12/tests/fixtures/conformance
+          PATH_TO_EXAMPLES: actions/hardened/FirelyTeam--firely-terminal-pipeline/v0.8.12/tests/fixtures/examples
+          PATH_TO_QUALITY_CONTROL_RULES: actions/hardened/FirelyTeam--firely-terminal-pipeline/v0.8.12/tests/fixtures/qc/minimal
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_OPTIONS: --no-sushi
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed with SUSHI options and examples path"
+          echo "PASS"

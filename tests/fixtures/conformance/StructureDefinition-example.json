@@ -1,0 +1,12 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "example",
+  "url": "http://example.org/fhir/StructureDefinition/example",
+  "name": "Example",
+  "status": "draft",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint"
+}
