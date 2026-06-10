@@ -1,0 +1,41 @@
+name: Test expected fails and validator engine inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create fixture package.json and conformance directory
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/conformance
+          cat > $GITHUB_WORKSPACE/package.json << 'EOF'
+{
+  "name": "test-fhir-project",
+  "version": "1.0.0",
+  "description": "Test FHIR project",
+  "fhirVersions": ["4.0.1"],
+  "dependencies": {}
+}
+EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_EXAMPLES: conformance
+          PATH_TO_QUALITY_CONTROL_RULES: minimal
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          SUSHI_OPTIONS: --no-sushi-option
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+
+      - name: Assert action completed with expected fails inputs
+        run: |
+          echo "Action completed successfully with EXPECTED_FAILS and FIRELY_TERMINAL_VALIDATOR_ENGINE inputs"
+          echo "PASS"

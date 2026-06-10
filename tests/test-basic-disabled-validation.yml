@@ -1,0 +1,41 @@
+name: Test basic usage with validation disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create fixture package.json and conformance directory
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/conformance
+          cat > $GITHUB_WORKSPACE/package.json << 'EOF'
+{
+  "name": "test-fhir-project",
+  "version": "1.0.0",
+  "description": "Test FHIR project",
+  "fhirVersions": ["4.0.1"],
+  "dependencies": {}
+}
+EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_EXAMPLES: conformance
+          PATH_TO_QUALITY_CONTROL_RULES: minimal
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          EXPECTED_FAILS: ""
+          SUSHI_OPTIONS: ""
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: ""
+
+      - name: Assert action completed
+        run: |
+          echo "Action completed successfully with validation disabled"
+          echo "PASS"
