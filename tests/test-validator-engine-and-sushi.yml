@@ -1,0 +1,37 @@
+name: Test with validator engine and sushi options
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json and directories
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_OPTIONS: --snapshot
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed with FIRELY_TERMINAL_VALIDATOR_ENGINE and SUSHI_OPTIONS inputs"
+          echo "PASS"
