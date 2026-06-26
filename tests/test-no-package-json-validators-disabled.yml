@@ -1,0 +1,32 @@
+name: Test - No package.json with Validators Disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal conformance resources directory
+        run: |
+          mkdir -p conformance-resources
+
+      - name: Ensure no package.json or sushi-config.yaml in workspace
+        run: |
+          # Remove any package.json or sushi-config.yaml that may exist from the repo
+          rm -f package.json sushi-config.yaml
+          echo "Workspace prepared without package.json or sushi-config.yaml"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance-resources
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SIMPLIFIER_USERNAME: "dummy@example.com"
+          SIMPLIFIER_PASSWORD: "dummy-password"
+
+      - name: Assert action completed successfully without package.json
+        run: |
+          echo "Action completed without package.json when validators are disabled"
+          echo "PASS"
