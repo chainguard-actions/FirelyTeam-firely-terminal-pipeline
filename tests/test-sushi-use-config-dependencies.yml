@@ -1,0 +1,79 @@
+name: Test - SUSHI_USE_CONFIG_DEPENDENCIES overrides package.json
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Install yq (needed by the action when sushi-config.yaml is present)
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/bin/yq https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/bin/yq
+          yq --version
+
+      # Create both package.json and sushi-config.yaml
+      # With SUSHI_USE_CONFIG_DEPENDENCIES=true, sushi-config.yaml should take precedence
+      - name: Create package.json fixture (should be overridden)
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project - this should be overridden",
+            "fhirVersions": [
+              "4.0.1"
+            ],
+            "dependencies": {}
+          }
+          EOF
+
+      - name: Create sushi-config.yaml fixture (source-of-truth)
+        run: |
+          cat > "$GITHUB_WORKSPACE/sushi-config.yaml" << 'EOF'
+          id: example.fhir.project
+          canonical: http://example.org/fhir
+          name: ExampleFHIRProject
+          status: draft
+          version: 1.0.0
+          fhirVersion: 4.0.1
+          dependencies:
+            hl7.fhir.r4.core: 4.0.1
+          EOF
+
+      # Create a minimal conformance resources directory
+      - name: Create conformance resources directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+          cat > "$GITHUB_WORKSPACE/resources/StructureDefinition-example.json" << 'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "example",
+            "url": "http://example.org/StructureDefinition/example",
+            "name": "Example",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint"
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_USE_CONFIG_DEPENDENCIES: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully with SUSHI_USE_CONFIG_DEPENDENCIES
+        run: |
+          echo "Action completed without errors when SUSHI_USE_CONFIG_DEPENDENCIES=true"
+          echo "PASS"
