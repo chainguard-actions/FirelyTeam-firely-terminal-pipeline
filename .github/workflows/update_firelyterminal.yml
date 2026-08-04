@@ -31,14 +31,16 @@ jobs:
         run: |
           FIRELY_TERMINAL_VERSION=$(yq '.inputs.FIRELY_TERMINAL_VERSION.default' action.yml)
           echo "FIRELY_TERMINAL_VERSION: '$FIRELY_TERMINAL_VERSION'"
-          echo "FIRELY_TERMINAL_VERSION=$FIRELY_TERMINAL_VERSION" >> $GITHUB_ENV
+          safe=$(printf '%s' "$FIRELY_TERMINAL_VERSION" | tr -d '\n\r')
+          echo "FIRELY_TERMINAL_VERSION=$safe" >> "$GITHUB_ENV"
 
       - name: Extract with latest release version of Firely Terminal
         run: |
           PACKAGE_URL="https://api.nuget.org/v3/registration5-semver1/firely.terminal/index.json"
           LATEST_RELEASE=$(wget -qO- "$PACKAGE_URL" | jq -r '.items[-1].items[-1].catalogEntry.version')
           echo "LATEST_RELEASE: '$LATEST_RELEASE'"
-          echo "LATEST_RELEASE=$LATEST_RELEASE" >> $GITHUB_ENV
+          safe=$(printf '%s' "$LATEST_RELEASE" | tr -d '\n\r')
+          echo "LATEST_RELEASE=$safe" >> "$GITHUB_ENV"
 
       - name: Compare versions of Firely Terminal
         run: |

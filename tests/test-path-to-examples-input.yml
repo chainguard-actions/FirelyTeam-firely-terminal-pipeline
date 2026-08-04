@@ -1,0 +1,75 @@
+name: Test - PATH_TO_EXAMPLES input coverage
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal package.json with FHIR R4 version info
+      - name: Create package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": [
+              "4.0.1"
+            ],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create a minimal conformance resources directory
+      - name: Create conformance resources directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+          cat > "$GITHUB_WORKSPACE/resources/StructureDefinition-example.json" << 'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "example",
+            "url": "http://example.org/StructureDefinition/example",
+            "name": "Example",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint"
+          }
+          EOF
+
+      # Create a minimal examples directory
+      - name: Create examples directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/examples"
+          cat > "$GITHUB_WORKSPACE/examples/Patient-example.json" << 'EOF'
+          {
+            "resourceType": "Patient",
+            "id": "example",
+            "name": [
+              {
+                "family": "Smith",
+                "given": ["John"]
+              }
+            ]
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          PATH_TO_EXAMPLES: examples
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully with PATH_TO_EXAMPLES set
+        run: |
+          echo "Action completed without errors when PATH_TO_EXAMPLES is set and Java validation is disabled"
+          echo "PASS"

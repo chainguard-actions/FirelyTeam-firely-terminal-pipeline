@@ -31,13 +31,15 @@ jobs:
         run: |
           JAVA_VALIDATOR_VERSION=$(yq '.inputs.JAVA_VALIDATOR_VERSION.default' action.yml)
           echo "JAVA_VALIDATOR_VERSION: '$JAVA_VALIDATOR_VERSION'"
-          echo "JAVA_VALIDATOR_VERSION=$JAVA_VALIDATOR_VERSION" >> $GITHUB_ENV
+          safe=$(printf '%s' "$JAVA_VALIDATOR_VERSION" | tr -d '\n\r')
+          echo "JAVA_VALIDATOR_VERSION=$safe" >> "$GITHUB_ENV"
 
       - name: Extract with latest release version of Java validator
         run: |
           LATEST_RELEASE=$(wget -qO- https://api.github.com/repos/hapifhir/org.hl7.fhir.core/releases/latest | jq -r '.tag_name')
           echo "LATEST_RELEASE: '$LATEST_RELEASE'"
-          echo "LATEST_RELEASE=$LATEST_RELEASE" >> $GITHUB_ENV
+          safe=$(printf '%s' "$LATEST_RELEASE" | tr -d '\n\r')
+          echo "LATEST_RELEASE=$safe" >> "$GITHUB_ENV"
 
       - name: Compare versions of Java validator
         run: |

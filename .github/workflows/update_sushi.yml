@@ -31,14 +31,16 @@ jobs:
         run: |
           SUSHI_VERSION=$(yq '.inputs.SUSHI_VERSION.default' action.yml)
           echo "SUSHI_VERSION: '$SUSHI_VERSION'"
-          echo "SUSHI_VERSION=$SUSHI_VERSION" >> $GITHUB_ENV
+          safe=$(printf '%s' "$SUSHI_VERSION" | tr -d '\n\r')
+          echo "SUSHI_VERSION=$safe" >> "$GITHUB_ENV"
 
       - name: Extract with latest release version of SUSHI
         run: |
           LATEST_RELEASE=$(wget -qO- https://api.github.com/repos/FHIR/sushi/releases/latest | jq -r '.tag_name')
           LATEST_RELEASE=${LATEST_RELEASE#v}
           echo "LATEST_RELEASE: '$LATEST_RELEASE'"
-          echo "LATEST_RELEASE=$LATEST_RELEASE" >> $GITHUB_ENV
+          safe=$(printf '%s' "$LATEST_RELEASE" | tr -d '\n\r')
+          echo "LATEST_RELEASE=$safe" >> "$GITHUB_ENV"
 
       - name: Compare versions of SUSHI
         run: |
