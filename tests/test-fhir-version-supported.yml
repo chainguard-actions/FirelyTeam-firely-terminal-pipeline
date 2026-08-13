@@ -1,0 +1,125 @@
+name: Test - FHIR version support validation
+on:
+  workflow_dispatch:
+
+jobs:
+  test-r4-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up package.json with a supported FHIR version (R4)
+      - name: Set up package.json with FHIR R4 (supported)
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          echo "package.json created:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      # Enable JAVA_VALIDATION_ENABLED so FHIR version detection runs.
+      # continue-on-error=true because Java validation may fail later.
+      - name: Run action with supported FHIR version (R4)
+        id: action-r4
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert FHIR R4 version detected
+        env:
+          FHIR_VERSION: ${{ env.FHIR_VERSION }}
+        run: |
+          echo "FHIR_VERSION: $FHIR_VERSION"
+          if [ "$FHIR_VERSION" != "4.0.1" ]; then
+            echo "FAIL: expected FHIR_VERSION=4.0.1 but got: $FHIR_VERSION"
+            exit 1
+          fi
+          echo "PASS: Action completed successfully for supported FHIR version 4.0.1"
+
+  test-r3-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up package.json with FHIR R3
+      - name: Set up package.json with FHIR R3 (supported)
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["3.0.2"],
+            "dependencies": {}
+          }
+          EOF
+
+      - name: Run action with FHIR R3
+        id: action-r3
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert FHIR R3 version detected
+        env:
+          FHIR_VERSION: ${{ env.FHIR_VERSION }}
+        run: |
+          echo "FHIR_VERSION: $FHIR_VERSION"
+          if [ "$FHIR_VERSION" != "3.0.2" ]; then
+            echo "FAIL: expected FHIR_VERSION=3.0.2 but got: $FHIR_VERSION"
+            exit 1
+          fi
+          echo "PASS: FHIR R3 version correctly detected"
+
+  test-r5-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up package.json with FHIR R5
+      - name: Set up package.json with FHIR R5 (supported)
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["5.0.0"],
+            "dependencies": {}
+          }
+          EOF
+
+      - name: Run action with FHIR R5
+        id: action-r5
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert FHIR R5 version detected
+        env:
+          FHIR_VERSION: ${{ env.FHIR_VERSION }}
+        run: |
+          echo "FHIR_VERSION: $FHIR_VERSION"
+          if [ "$FHIR_VERSION" != "5.0.0" ]; then
+            echo "FAIL: expected FHIR_VERSION=5.0.0 but got: $FHIR_VERSION"
+            exit 1
+          fi
+          echo "PASS: FHIR R5 version correctly detected"

@@ -1,4 +1,4 @@
-name: Test - SUSHI disabled (default)
+name: Test - Both validators disabled
 on:
   workflow_dispatch:
 
@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # Set up package.json so the action has it available
+      # Create a minimal package.json at workspace root so the action has it available
       - name: Set up test package.json
         run: |
           cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
@@ -19,10 +19,10 @@ jobs:
             "dependencies": {}
           }
           EOF
+          echo "package.json created at workspace root"
+          cat "$GITHUB_WORKSPACE/package.json"
 
-      # Run action with SUSHI disabled and both validators disabled.
-      # The action should complete without running SUSHI or any validation.
-      - name: Run action with SUSHI disabled
+      - name: Run action with both validators disabled
         id: action
         uses: .
         with:
@@ -33,7 +33,7 @@ jobs:
           SIMPLIFIER_USERNAME: test@example.com
           SIMPLIFIER_PASSWORD: test-password
 
-      - name: Assert action completed without SUSHI
+      - name: Assert action completed without error
         run: |
-          echo "Action completed successfully with SUSHI disabled"
-          echo "PASS: SUSHI was disabled and action completed without errors"
+          echo "Action completed successfully with both validators disabled"
+          echo "PASS"

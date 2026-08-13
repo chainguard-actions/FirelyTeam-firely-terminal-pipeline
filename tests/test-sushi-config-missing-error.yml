@@ -1,0 +1,56 @@
+name: Test - SUSHI_USE_CONFIG_DEPENDENCIES=true without sushi-config.yaml causes error
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up only package.json, no sushi-config.yaml
+      - name: Set up package.json only (no sushi-config.yaml)
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          rm -f "$GITHUB_WORKSPACE/sushi-config.yaml"
+          echo "package.json created, sushi-config.yaml removed"
+          ls -la "$GITHUB_WORKSPACE/" | grep -E "package.json|sushi-config" || true
+
+      # Run action with SUSHI_USE_CONFIG_DEPENDENCIES=true but no sushi-config.yaml.
+      # The action should fail with "ERROR: SUSHI_USE_CONFIG_DEPENDENCIES=true but sushi-config.yaml not found".
+      # Enable JAVA_VALIDATION_ENABLED=true so FHIR version detection runs and hits the error.
+      - name: Run action with SUSHI_USE_CONFIG_DEPENDENCIES=true but no sushi-config.yaml
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SUSHI_USE_CONFIG_DEPENDENCIES: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action failed due to missing sushi-config.yaml
+        env:
+          ACTION_OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "action_outcome: $ACTION_OUTCOME"
+          if [ "$ACTION_OUTCOME" = "failure" ]; then
+            echo "PASS: Action correctly failed when SUSHI_USE_CONFIG_DEPENDENCIES=true but sushi-config.yaml is missing"
+          else
+            echo "FAIL: Action should have failed but outcome was: $ACTION_OUTCOME"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f "$GITHUB_WORKSPACE/package.json"

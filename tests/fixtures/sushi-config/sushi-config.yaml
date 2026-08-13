@@ -1,0 +1,7 @@
+id: example.fhir.project
+canonical: http://example.org/fhir
+name: ExampleFHIRProject
+status: draft
+version: 1.0.0
+fhirVersion: 4.0.1
+dependencies: {}

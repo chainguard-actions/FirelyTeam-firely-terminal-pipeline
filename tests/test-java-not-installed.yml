@@ -1,0 +1,68 @@
+name: Test - java validation requires java to be installed
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up package.json at workspace root
+      - name: Set up test package.json
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # Check if Java is available
+      - name: Check Java availability
+        id: check-java
+        run: |
+          if command -v java &> /dev/null; then
+            echo "java_available=true" >> "$GITHUB_OUTPUT"
+            echo "Java is available: $(java -version 2>&1 | head -1)"
+          else
+            echo "java_available=false" >> "$GITHUB_OUTPUT"
+            echo "Java is NOT available"
+          fi
+
+      # When Java is not available and JAVA_VALIDATION_ENABLED=true, action should fail
+      # at the "Check if Java is installed" step.
+      # When Java IS available, action may proceed further (download validator, etc.)
+      - name: Run action with Java validation enabled
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert correct behavior based on Java availability
+        env:
+          JAVA_AVAILABLE: ${{ steps.check-java.outputs.java_available }}
+          ACTION_OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "java_available: $JAVA_AVAILABLE"
+          echo "action_outcome: $ACTION_OUTCOME"
+          if [ "$JAVA_AVAILABLE" = "false" ]; then
+            # Java not available - action should have failed
+            if [ "$ACTION_OUTCOME" = "failure" ]; then
+              echo "PASS: Action correctly failed when Java is not installed"
+            else
+              echo "FAIL: Action should have failed when Java is not installed but outcome was: $ACTION_OUTCOME"
+              exit 1
+            fi
+          else
+            # Java is available - action may proceed further (download validator, validate, etc.)
+            echo "Java is available, action outcome: $ACTION_OUTCOME (acceptable)"
+            echo "PASS: Java prerequisite check passed"
+          fi

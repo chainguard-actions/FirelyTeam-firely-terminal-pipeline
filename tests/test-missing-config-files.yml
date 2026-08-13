@@ -1,0 +1,41 @@
+name: Test - missing package.json and sushi-config.yaml causes error
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Ensure no package.json or sushi-config.yaml exist at workspace root
+      - name: Remove any existing config files from workspace root
+        run: |
+          rm -f "$GITHUB_WORKSPACE/package.json" "$GITHUB_WORKSPACE/sushi-config.yaml"
+          echo "Confirmed: no package.json or sushi-config.yaml at workspace root"
+          ls -la "$GITHUB_WORKSPACE/" | grep -E "package.json|sushi-config" || echo "Neither file exists (expected)"
+
+      # Run action with JAVA_VALIDATION_ENABLED=true so FHIR version detection runs.
+      # Without package.json or sushi-config.yaml, the action should fail with an error.
+      - name: Run action without package.json or sushi-config.yaml
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action failed due to missing config files
+        env:
+          ACTION_OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "action_outcome: $ACTION_OUTCOME"
+          if [ "$ACTION_OUTCOME" = "failure" ]; then
+            echo "PASS: Action correctly failed when neither package.json nor sushi-config.yaml exists"
+          else
+            echo "FAIL: Action should have failed but outcome was: $ACTION_OUTCOME"
+            exit 1
+          fi

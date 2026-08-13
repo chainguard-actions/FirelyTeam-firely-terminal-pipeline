@@ -1,0 +1,53 @@
+name: Test - FHIR version detection from package.json
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy the fixture package.json to workspace root so the action can find it
+      - name: Set up test package.json with FHIR R4
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          echo "package.json contents:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      # Enable JAVA_VALIDATION_ENABLED so FHIR version detection runs (step 7 in action).
+      # DOTNET_VALIDATION_ENABLED=false so we skip dotnet prerequisite checks.
+      # continue-on-error=true because Java validation may fail (Java not installed, network, etc.)
+      # but FHIR_VERSION is set in $GITHUB_ENV before any Java-specific steps.
+      - name: Run action - detect FHIR version from package.json
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert FHIR version was detected
+        env:
+          FHIR_VERSION: ${{ env.FHIR_VERSION }}
+        run: |
+          echo "FHIR_VERSION env: $FHIR_VERSION"
+          if [ -z "$FHIR_VERSION" ]; then
+            echo "FAIL: FHIR_VERSION was not set in environment"
+            exit 1
+          fi
+          if [ "$FHIR_VERSION" != "4.0.1" ]; then
+            echo "FAIL: expected FHIR_VERSION=4.0.1 but got: $FHIR_VERSION"
+            exit 1
+          fi
+          echo "PASS: FHIR version correctly detected as $FHIR_VERSION"

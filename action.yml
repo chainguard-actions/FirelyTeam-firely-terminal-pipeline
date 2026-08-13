@@ -100,7 +100,7 @@ runs:
     # Firely.Terminal steps
     - name: Check if .NET is installed
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ] || [ "$INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED" = 'true' ]; then
+        if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED; then
           if ! command -v dotnet &> /dev/null
           then
               echo "dotnet could not be found. Please see actions/setup-dotnet to set it up before running this action."
@@ -114,7 +114,7 @@ runs:
     # Test Firely SDK version
     - name: Check .NET SDK Version
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ]; then
+        if $INPUT_DOTNET_VALIDATION_ENABLED; then
           CHECK_DOTNET_VERSION=$(dotnet --version)
           echo "DOTNET_VERSION: $CHECK_DOTNET_VERSION"
         fi
@@ -124,7 +124,7 @@ runs:
     # Install Firely.Terminal
     - name: Install Firely.Terminal
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ] || [ "$INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED" = 'true' ]; then
+        if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED; then
           if ! command -v fhir &> /dev/null
           then
             dotnet tool install --global Firely.Terminal --version "$FIRELY_TERMINAL_VERSION" > /dev/null
@@ -138,7 +138,7 @@ runs:
     # Test Firely.Terminal install
     - name: Check Firely Terminal Version
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ]; then
+        if $INPUT_DOTNET_VALIDATION_ENABLED; then
           CHECK_FIRELY_TERMINAL_VERSION=$(fhir -v | tr '\n' ' ') # Print everything in a single line
           echo "FIRELY_TERMINAL_VERSION: $CHECK_FIRELY_TERMINAL_VERSION"
         fi
@@ -148,8 +148,8 @@ runs:
     # Simplifier Login
     - name: Simplifier login
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ]; then
-          fhir login "email=$INPUT_SIMPLIFIER_USERNAME" "password=$INPUT_SIMPLIFIER_PASSWORD"
+        if $INPUT_DOTNET_VALIDATION_ENABLED; then
+          fhir login email="$INPUT_SIMPLIFIER_USERNAME" password="$INPUT_SIMPLIFIER_PASSWORD"
         fi
       shell: bash
       env:
@@ -171,7 +171,7 @@ runs:
       shell: bash
     # Determine FHIR version source and dependency handling strategy
     - name: Detect FHIR version and determine dependency source
-      run: "if [ \"$INPUT_DOTNET_VALIDATION_ENABLED\" = 'true' ] || [ \"$INPUT_JAVA_VALIDATION_ENABLED\" = 'true' ]; then\n  \n  # Check which files are available\n  packageJsonExists=false\n  sushiConfigExists=false\n  [ -f \"package.json\" ] && packageJsonExists=true\n  [ -f \"sushi-config.yaml\" ] && sushiConfigExists=true\n  \n  echo \"File availability: package.json=$packageJsonExists, sushi-config.yaml=$sushiConfigExists\"\n  \n  # Determine dependency source strategy and FHIR version source\n  usePackageJson=false\n  useSushiConfig=false\n  needSushiConversion=false\n  \n  if [ \"$INPUT_SUSHI_USE_CONFIG_DEPENDENCIES\" = 'true' ]; then\n    # Explicitly configured to use SUSHI config as source-of-truth for dependencies\n    if [ \"$sushiConfigExists\" = true ]; then\n      useSushiConfig=true\n      needSushiConversion=true\n      if [ \"$packageJsonExists\" = true ]; then\n        echo \"Strategy: Using sushi-config.yaml as source-of-truth for dependencies (SUSHI_USE_CONFIG_DEPENDENCIES=true, package.json will be ignored)\"\n      else\n        echo \"Strategy: Using sushi-config.yaml as source-of-truth for dependencies (SUSHI_USE_CONFIG_DEPENDENCIES=true)\"\n      fi\n    else\n      echo \"ERROR: SUSHI_USE_CONFIG_DEPENDENCIES=true but sushi-config.yaml not found\"\n      exit 1\n    fi\n  elif [ \"$packageJsonExists\" = true ]; then\n    # Use existing package.json (preferred when available)\n    usePackageJson=true\n    needSushiConversion=false\n    echo \"Strategy: Using existing package.json\"\n  elif [ \"$INPUT_SUSHI_ENABLED\" = 'true' ] && [ \"$sushiConfigExists\" = true ]; then\n    # Auto-convert sushi-config.yaml to package.json (smart detection)\n    useSushiConfig=true\n    needSushiConversion=true\n    echo \"Strategy: Auto-converting sushi-config.yaml to package.json (no package.json available)\"\n  elif [ \"$sushiConfigExists\" = true ]; then\n    # No package.json available, convert sushi-config.yaml so all validators can resolve dependencies\n    useSushiConfig=true\n    needSushiConversion=true\n    echo \"Strategy: Converting sushi-config.yaml to package.json (required for dependency resolution)\"\n  else\n    echo \"ERROR: Neither package.json nor sushi-config.yaml found. At least one is required.\"\n    exit 1\n  fi\n  \n  # Store strategy decisions for subsequent steps\n  echo \"NEED_SUSHI_CONVERSION=$needSushiConversion\" >> \"$GITHUB_ENV\"\n  echo \"USE_SUSHI_CONFIG=$useSushiConfig\" >> \"$GITHUB_ENV\"\n  echo \"USE_PACKAGE_JSON=$usePackageJson\" >> \"$GITHUB_ENV\"\n  \n  # Extract FHIR version from the determined source (accept any version found)\n  fhirVersion=\"\"\n  \n  if [ \"$usePackageJson\" = true ]; then\n    # Extract from package.json - get first fhirVersion found\n    fhirVersion=$(jq -r '.fhirVersions[0]' package.json 2>/dev/null || echo \"\")\n    if [ -n \"$fhirVersion\" ] && [ \"$fhirVersion\" != \"null\" ]; then\n      echo \"Found FHIR version $fhirVersion in package.json\"\n    fi\n  elif [ \"$useSushiConfig\" = true ]; then\n    # Extract from sushi-config.yaml - try different yq syntax approaches\n    echo \"Attempting to extract FHIR version from sushi-config.yaml...\"\n    \n    # Debug: Show the raw fhirVersion value\n    echo \"Raw fhirVersion from sushi-config.yaml:\"\n    yq eval '.fhirVersion' sushi-config.yaml || echo \"yq eval failed\"\n    \n    # Try multiple extraction methods\n    fhirVersion=$(yq eval '.fhirVersion' sushi-config.yaml 2>/dev/null || echo \"\")\n    if [ -z \"$fhirVersion\" ] || [ \"$fhirVersion\" = \"null\" ]; then\n      # Try alternative yq syntax\n      fhirVersion=$(yq '.fhirVersion' sushi-config.yaml 2>/dev/null || echo \"\")\n    fi\n    if [ -z \"$fhirVersion\" ] || [ \"$fhirVersion\" = \"null\" ]; then\n      # Try with explicit string output\n      fhirVersion=$(yq eval '.fhirVersion | @base64' sushi-config.yaml 2>/dev/null | base64 -d 2>/dev/null || echo \"\")\n    fi\n    \n    if [ -n \"$fhirVersion\" ] && [ \"$fhirVersion\" != \"null\" ]; then\n      echo \"Found FHIR version $fhirVersion in sushi-config.yaml\"\n    else\n      echo \"DEBUG: Full sushi-config.yaml content:\"\n      cat sushi-config.yaml | head -20\n      echo \"DEBUG: yq version:\"\n      yq --version\n    fi\n  fi\n  \n  # Only error if no FHIR version found at all\n  if [[ -z \"$fhirVersion\" ]] || [[ \"$fhirVersion\" = \"null\" ]]; then\n    if [ \"$usePackageJson\" = true ]; then\n      echo \"ERROR: No FHIR version found in package.json (.fhirVersions)\"\n    else\n      echo \"ERROR: No FHIR version found in sushi-config.yaml (.fhirVersion)\"\n    fi\n    exit 1\n  fi\n  \n  echo \"Detected FHIR version: $fhirVersion\"\n  echo \"FHIR_VERSION=$fhirVersion\" >> \"$GITHUB_ENV\"\nelse\n  echo \"Skipping FHIR version detection (no validation enabled)\"\nfi\n"
+      run: "if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_JAVA_VALIDATION_ENABLED; then\n  \n  # Check which files are available\n  packageJsonExists=false\n  sushiConfigExists=false\n  [ -f \"package.json\" ] && packageJsonExists=true\n  [ -f \"sushi-config.yaml\" ] && sushiConfigExists=true\n  \n  echo \"File availability: package.json=$packageJsonExists, sushi-config.yaml=$sushiConfigExists\"\n  \n  # Determine dependency source strategy and FHIR version source\n  usePackageJson=false\n  useSushiConfig=false\n  needSushiConversion=false\n  \n  if $INPUT_SUSHI_USE_CONFIG_DEPENDENCIES; then\n    # Explicitly configured to use SUSHI config as source-of-truth for dependencies\n    if [ \"$sushiConfigExists\" = true ]; then\n      useSushiConfig=true\n      needSushiConversion=true\n      if [ \"$packageJsonExists\" = true ]; then\n        echo \"Strategy: Using sushi-config.yaml as source-of-truth for dependencies (SUSHI_USE_CONFIG_DEPENDENCIES=true, package.json will be ignored)\"\n      else\n        echo \"Strategy: Using sushi-config.yaml as source-of-truth for dependencies (SUSHI_USE_CONFIG_DEPENDENCIES=true)\"\n      fi\n    else\n      echo \"ERROR: SUSHI_USE_CONFIG_DEPENDENCIES=true but sushi-config.yaml not found\"\n      exit 1\n    fi\n  elif [ \"$packageJsonExists\" = true ]; then\n    # Use existing package.json (preferred when available)\n    usePackageJson=true\n    needSushiConversion=false\n    echo \"Strategy: Using existing package.json\"\n  elif $INPUT_SUSHI_ENABLED && [ \"$sushiConfigExists\" = true ]; then\n    # Auto-convert sushi-config.yaml to package.json (smart detection)\n    useSushiConfig=true\n    needSushiConversion=true\n    echo \"Strategy: Auto-converting sushi-config.yaml to package.json (no package.json available)\"\n  elif [ \"$sushiConfigExists\" = true ]; then\n    # No package.json available, convert sushi-config.yaml so all validators can resolve dependencies\n    useSushiConfig=true\n    needSushiConversion=true\n    echo \"Strategy: Converting sushi-config.yaml to package.json (required for dependency resolution)\"\n  else\n    echo \"ERROR: Neither package.json nor sushi-config.yaml found. At least one is required.\"\n    exit 1\n  fi\n  \n  # Store strategy decisions for subsequent steps\n  echo \"NEED_SUSHI_CONVERSION=$needSushiConversion\" >> \"$GITHUB_ENV\"\n  echo \"USE_SUSHI_CONFIG=$useSushiConfig\" >> \"$GITHUB_ENV\"\n  echo \"USE_PACKAGE_JSON=$usePackageJson\" >> \"$GITHUB_ENV\"\n  \n  # Extract FHIR version from the determined source (accept any version found)\n  fhirVersion=\"\"\n  \n  if [ \"$usePackageJson\" = true ]; then\n    # Extract from package.json - get first fhirVersion found\n    fhirVersion=$(jq -r '.fhirVersions[0]' package.json 2>/dev/null || echo \"\")\n    if [ -n \"$fhirVersion\" ] && [ \"$fhirVersion\" != \"null\" ]; then\n      echo \"Found FHIR version $fhirVersion in package.json\"\n    fi\n  elif [ \"$useSushiConfig\" = true ]; then\n    # Extract from sushi-config.yaml - try different yq syntax approaches\n    echo \"Attempting to extract FHIR version from sushi-config.yaml...\"\n    \n    # Debug: Show the raw fhirVersion value\n    echo \"Raw fhirVersion from sushi-config.yaml:\"\n    yq eval '.fhirVersion' sushi-config.yaml || echo \"yq eval failed\"\n    \n    # Try multiple extraction methods\n    fhirVersion=$(yq eval '.fhirVersion' sushi-config.yaml 2>/dev/null || echo \"\")\n    if [ -z \"$fhirVersion\" ] || [ \"$fhirVersion\" = \"null\" ]; then\n      # Try alternative yq syntax\n      fhirVersion=$(yq '.fhirVersion' sushi-config.yaml 2>/dev/null || echo \"\")\n    fi\n    if [ -z \"$fhirVersion\" ] || [ \"$fhirVersion\" = \"null\" ]; then\n      # Try with explicit string output\n      fhirVersion=$(yq eval '.fhirVersion | @base64' sushi-config.yaml 2>/dev/null | base64 -d 2>/dev/null || echo \"\")\n    fi\n    \n    if [ -n \"$fhirVersion\" ] && [ \"$fhirVersion\" != \"null\" ]; then\n      echo \"Found FHIR version $fhirVersion in sushi-config.yaml\"\n    else\n      echo \"DEBUG: Full sushi-config.yaml content:\"\n      cat sushi-config.yaml | head -20\n      echo \"DEBUG: yq version:\"\n      yq --version\n    fi\n  fi\n  \n  # Only error if no FHIR version found at all\n  if [[ -z \"$fhirVersion\" ]] || [[ \"$fhirVersion\" = \"null\" ]]; then\n    if [ \"$usePackageJson\" = true ]; then\n      echo \"ERROR: No FHIR version found in package.json (.fhirVersions)\"\n    else\n      echo \"ERROR: No FHIR version found in sushi-config.yaml (.fhirVersion)\"\n    fi\n    exit 1\n  fi\n  \n  echo \"Detected FHIR version: $fhirVersion\"\n  safe_fhirVersion=$(printf '%s' \"$fhirVersion\" | tr -d '\\n\\r')\n  echo \"FHIR_VERSION=$safe_fhirVersion\" >> \"$GITHUB_ENV\"\nelse\n  echo \"Skipping FHIR version detection (no validation enabled)\"\nfi\n"
       shell: bash
       env:
         INPUT_DOTNET_VALIDATION_ENABLED: ${{ inputs.DOTNET_VALIDATION_ENABLED }}
@@ -180,7 +180,7 @@ runs:
         INPUT_SUSHI_USE_CONFIG_DEPENDENCIES: ${{ inputs.SUSHI_USE_CONFIG_DEPENDENCIES }}
     # Validate that the detected FHIR version is supported by this action
     - name: Validate FHIR version support
-      run: "if [ \"$INPUT_DOTNET_VALIDATION_ENABLED\" = 'true' ] || [ \"$INPUT_JAVA_VALIDATION_ENABLED\" = 'true' ]; then\n  # Define supported FHIR versions\n  supportedVersions=(\"3.0.2\" \"4.0.1\" \"4.1.0\" \"4.6.0\" \"5.0.0\")\n  \n  # Check if detected version is supported\n  supportedVersion=false\n  for supportedFhirVersion in ${supportedVersions[@]}; do\n    if [[ \"$FHIR_VERSION\" = \"$supportedFhirVersion\" ]]; then\n      supportedVersion=true\n      break\n    fi\n  done\n  \n  if [ \"$supportedVersion\" = true ]; then\n    echo \"FHIR version $FHIR_VERSION is supported by this action\"\n  else\n    echo \"WARNING: FHIR version $FHIR_VERSION is not officially supported by this action.\"\n    echo \"Supported versions are: 3.0.2, 4.0.1, 4.1.0, 4.6.0, 5.0.0\"\n    echo \"The action will continue but may encounter issues during validation.\"\n    echo \"::warning::FHIR version $FHIR_VERSION is not officially supported. Supported versions: 3.0.2, 4.0.1, 4.1.0, 4.6.0, 5.0.0\"\n  fi\nelse\n  echo \"Skipping FHIR version validation (no validation enabled)\"\nfi\n"
+      run: "if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_JAVA_VALIDATION_ENABLED; then\n  # Define supported FHIR versions\n  supportedVersions=(\"3.0.2\" \"4.0.1\" \"4.1.0\" \"4.6.0\" \"5.0.0\")\n  \n  # Check if detected version is supported\n  supportedVersion=false\n  for supportedFhirVersion in ${supportedVersions[@]}; do\n    if [[ \"$FHIR_VERSION\" = \"$supportedFhirVersion\" ]]; then\n      supportedVersion=true\n      break\n    fi\n  done\n  \n  if [ \"$supportedVersion\" = true ]; then\n    echo \"FHIR version $FHIR_VERSION is supported by this action\"\n  else\n    echo \"WARNING: FHIR version $FHIR_VERSION is not officially supported by this action.\"\n    echo \"Supported versions are: 3.0.2, 4.0.1, 4.1.0, 4.6.0, 5.0.0\"\n    echo \"The action will continue but may encounter issues during validation.\"\n    echo \"::warning::FHIR version $FHIR_VERSION is not officially supported. Supported versions: 3.0.2, 4.0.1, 4.1.0, 4.6.0, 5.0.0\"\n  fi\nelse\n  echo \"Skipping FHIR version validation (no validation enabled)\"\nfi\n"
       shell: bash
       env:
         FHIR_VERSION: ${{ env.FHIR_VERSION }}
@@ -195,7 +195,7 @@ runs:
         FHIR_VERSION: ${{ env.FHIR_VERSION }}
     # Set Firely Terminal FHIR specification and restore dependencies
     - name: Set FHIR specification and restore dependencies
-      run: "if [ \"$INPUT_DOTNET_VALIDATION_ENABLED\" = 'true' ]; then\n  echo \"Setting up Firely Terminal for .NET validation...\"\n  if [[ \"$FHIR_VERSION\" = \"3.0.2\" ]]; then\n    fhir spec R3\n  elif [[ \"$FHIR_VERSION\" = \"4.0.1\" ]]; then\n    fhir spec R4\n  elif [[ \"$FHIR_VERSION\" = \"4.1.0\" ]]; then\n    fhir spec R4B\n  elif [[ \"$FHIR_VERSION\" = \"4.6.0\" ]]; then\n    fhir spec R5\n  elif [[ \"$FHIR_VERSION\" = \"5.0.0\" ]]; then\n    fhir spec R5\n  else\n    echo \"This FHIR version is currently not supported.\"\n    exit 1\n  fi\n  \n  echo \"Attempting to restore package dependencies based on package.json ...\"\n  fhir config regenerate on\n  FHIR_RESTORE=$((fhir restore | tr '\\n' ' ')|| true)  # Print everything in a single line\n  if [[ \"$FHIR_RESTORE\" == *\"Cannot restore\"* ]]; then\n    echo $FHIR_RESTORE\n    exit 1\n  fi\n  echo \"Restore of package.json was successful: $FHIR_RESTORE\"\nelse\n  echo \"Skipping Firely Terminal package restore (not needed for current validation setup)\"\nfi\n"
+      run: "if $INPUT_DOTNET_VALIDATION_ENABLED; then\n  echo \"Setting up Firely Terminal for .NET validation...\"\n  if [[ \"$FHIR_VERSION\" = \"3.0.2\" ]]; then\n    fhir spec R3\n  elif [[ \"$FHIR_VERSION\" = \"4.0.1\" ]]; then\n    fhir spec R4\n  elif [[ \"$FHIR_VERSION\" = \"4.1.0\" ]]; then\n    fhir spec R4B\n  elif [[ \"$FHIR_VERSION\" = \"4.6.0\" ]]; then\n    fhir spec R5\n  elif [[ \"$FHIR_VERSION\" = \"5.0.0\" ]]; then\n    fhir spec R5\n  else\n    echo \"This FHIR version is currently not supported.\"\n    exit 1\n  fi\n  \n  echo \"Attempting to restore package dependencies based on package.json ...\"\n  fhir config regenerate on\n  FHIR_RESTORE=$((fhir restore | tr '\\n' ' ')|| true)  # Print everything in a single line\n  if [[ \"$FHIR_RESTORE\" == *\"Cannot restore\"* ]]; then\n    echo $FHIR_RESTORE\n    exit 1\n  fi\n  echo \"Restore of package.json was successful: $FHIR_RESTORE\"\nelse\n  echo \"Skipping Firely Terminal package restore (not needed for current validation setup)\"\nfi\n"
       shell: bash
       env:
         FHIR_VERSION: ${{ env.FHIR_VERSION }}
@@ -211,7 +211,7 @@ runs:
     # --------------------------------------------------------------------------------------------------- #
     - name: Check if npm is installed
       run: |
-        if [ "$INPUT_SUSHI_ENABLED" = 'true' ]; then
+        if $INPUT_SUSHI_ENABLED; then
           if ! command -v npm &> /dev/null
           then
               echo "npm could not be found. Please see actions/setup-node to set it up before running this action."
@@ -223,7 +223,7 @@ runs:
         INPUT_SUSHI_ENABLED: ${{ inputs.SUSHI_ENABLED }}
     - name: Check npm Version
       run: |
-        if [ "$INPUT_SUSHI_ENABLED" = 'true' ]; then
+        if $INPUT_SUSHI_ENABLED; then
           CHECK_NPM_VERSION=$(npm --version)
           echo "NPM_VERSION: $CHECK_NPM_VERSION"
         fi
@@ -232,7 +232,7 @@ runs:
         INPUT_SUSHI_ENABLED: ${{ inputs.SUSHI_ENABLED }}
     - name: Install fsh-sushi
       run: |
-        if [ "$INPUT_SUSHI_ENABLED" = 'true' ]; then
+        if $INPUT_SUSHI_ENABLED; then
           sudo chown -R $USER /usr/local/lib/node_modules
           sudo npm install -g "fsh-sushi@$SUSHI_VERSION"
         fi
@@ -242,7 +242,7 @@ runs:
         INPUT_SUSHI_ENABLED: ${{ inputs.SUSHI_ENABLED }}
     - name: Check SUSHI version
       run: |
-        if [ "$INPUT_SUSHI_ENABLED" = 'true' ]; then
+        if $INPUT_SUSHI_ENABLED; then
           sushi -v
         fi
       shell: bash
@@ -250,12 +250,8 @@ runs:
         INPUT_SUSHI_ENABLED: ${{ inputs.SUSHI_ENABLED }}
     - name: Generate conformance resources with SUSHI
       run: |
-        if [ "$INPUT_SUSHI_ENABLED" = 'true' ]; then
-          sushi_args=()
-          if [ -n "$INPUT_SUSHI_OPTIONS" ]; then
-            IFS=' ' read -ra sushi_args <<< "$INPUT_SUSHI_OPTIONS"
-          fi
-          sushi "${sushi_args[@]}"
+        if $INPUT_SUSHI_ENABLED; then
+          sushi ${INPUT_SUSHI_OPTIONS:+"$INPUT_SUSHI_OPTIONS"}
         fi
       shell: bash
       env:
@@ -265,7 +261,7 @@ runs:
     #                                            Pre-processing                                           #
     # --------------------------------------------------------------------------------------------------- #
     - name: Pre-processing FHIR profiles (Slicing open-closed)
-      run: "if [ \"$CLOSE_SLICING_FOR_VALIDATION\" = 'true' ]; then\n  childProfiles_tmp=\"$(mktemp)\"\n  \n  # Pass 1: collect all baseDefinition URLs (profiles that have children)\n  find \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\" -type f -name '*.json' -print |\n  while IFS= read -r f; do\n    rt=\"$(jq -r '.resourceType // empty' \"$f\")\"\n    [ \"$rt\" = \"StructureDefinition\" ] || continue\n  \n    base=\"$(jq -r '.baseDefinition // empty' \"$f\")\"\n    [ -n \"$base\" ] && printf '%s\\n' \"$base\"\n  done | sort -u > \"$childProfiles_tmp\"\n\n  # Pass 2: close slicings only for child StructureDefinitions -> Prevent \"The base snapshot marks a slicing as closed, but the differential tries to extend it\" error\n  find \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\" -type f -name '*.json' -print |\n  while IFS= read -r f; do\n    rt=\"$(jq -r '.resourceType // empty' \"$f\")\"\n    [ \"$rt\" = \"StructureDefinition\" ] || continue\n  \n    url=\"$(jq -r '.url // empty' \"$f\")\"\n    [ -n \"$url\" ] || continue\n  \n    # Skip profiles that are extended by others\n    if grep -Fxq \"$url\" \"$childProfiles_tmp\"; then\n      continue\n    fi\n  \n    tmp=\"${f}.tmp\"\n    jq '\n      if .differential?.element then\n        .differential.element |= map(\n          if .slicing? then\n            .slicing.rules = \"closed\"\n          else\n            .\n          end\n        )\n      else\n        .\n      end\n    ' \"$f\" > \"$tmp\" && mv \"$tmp\" \"$f\"\n  done\nfi\n"
+      run: "if $CLOSE_SLICING_FOR_VALIDATION; then\n  childProfiles_tmp=\"$(mktemp)\"\n  \n  # Pass 1: collect all baseDefinition URLs (profiles that have children)\n  find \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\" -type f -name '*.json' -print |\n  while IFS= read -r f; do\n    rt=\"$(jq -r '.resourceType // empty' \"$f\")\"\n    [ \"$rt\" = \"StructureDefinition\" ] || continue\n  \n    base=\"$(jq -r '.baseDefinition // empty' \"$f\")\"\n    [ -n \"$base\" ] && printf '%s\\n' \"$base\"\n  done | sort -u > \"$childProfiles_tmp\"\n\n  # Pass 2: close slicings only for child StructureDefinitions -> Prevent \"The base snapshot marks a slicing as closed, but the differential tries to extend it\" error\n  find \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\" -type f -name '*.json' -print |\n  while IFS= read -r f; do\n    rt=\"$(jq -r '.resourceType // empty' \"$f\")\"\n    [ \"$rt\" = \"StructureDefinition\" ] || continue\n  \n    url=\"$(jq -r '.url // empty' \"$f\")\"\n    [ -n \"$url\" ] || continue\n  \n    # Skip profiles that are extended by others\n    if grep -Fxq \"$url\" \"$childProfiles_tmp\"; then\n      continue\n    fi\n  \n    tmp=\"${f}.tmp\"\n    jq '\n      if .differential?.element then\n        .differential.element |= map(\n          if .slicing? then\n            .slicing.rules = \"closed\"\n          else\n            .\n          end\n        )\n      else\n        .\n      end\n    ' \"$f\" > \"$tmp\" && mv \"$tmp\" \"$f\"\n  done\nfi\n"
       shell: bash
       env:
         CLOSE_SLICING_FOR_VALIDATION: ${{ inputs.CLOSE_SLICING_FOR_VALIDATION }}
@@ -277,7 +273,7 @@ runs:
     # Set Firely Terminal validator engine (only if specified)
     - name: Configure Firely Terminal validator engine
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ]; then
+        if $INPUT_DOTNET_VALIDATION_ENABLED; then
           if [ -n "$FIRELY_TERMINAL_VALIDATOR_ENGINE" ]; then
             case "$FIRELY_TERMINAL_VALIDATOR_ENGINE" in
               firely|netsdk)
@@ -300,7 +296,7 @@ runs:
     # Run Quality Control checks incl. validation
     - name: Run Quality Control checks
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ]; then
+        if $INPUT_DOTNET_VALIDATION_ENABLED; then
           echo "Running quality control checks incl. validation based on Firely Terminal ..."
           if echo "$INPUT_EXPECTED_FAILS" | grep -w -q VALIDATION_CONFORMANCE_DOTNET; then
             fhir check ${INPUT_PATH_TO_QUALITY_CONTROL_RULES:+"$INPUT_PATH_TO_QUALITY_CONTROL_RULES"}
@@ -315,7 +311,7 @@ runs:
         INPUT_PATH_TO_QUALITY_CONTROL_RULES: ${{ inputs.PATH_TO_QUALITY_CONTROL_RULES }}
     - name: Report Success - .NET Validator
       run: |
-        if [ "$INPUT_DOTNET_VALIDATION_ENABLED" = 'true' ]; then
+        if $INPUT_DOTNET_VALIDATION_ENABLED; then
           echo "Finished validation using .NET validator (Conformance resources) ..."
         fi
       shell: bash
@@ -330,7 +326,7 @@ runs:
     # Offical HL7 Java validator steps
     - name: Remove package cache to enable the Java  validator to create snapshots
       run: |
-        if [ "$INPUT_JAVA_SNAPSHOT_ENABLED" = 'true' ]; then
+        if $INPUT_JAVA_SNAPSHOT_ENABLED; then
           fhirCacheLocation=$(fhir cache location --path)
           rm -rf $fhirCacheLocation
         fi
@@ -339,7 +335,7 @@ runs:
         INPUT_JAVA_SNAPSHOT_ENABLED: ${{ inputs.JAVA_SNAPSHOT_ENABLED }}
     - name: Check if Java is installed
       run: |
-        if [ "$INPUT_JAVA_VALIDATION_ENABLED" = 'true' ]; then
+        if $INPUT_JAVA_VALIDATION_ENABLED; then
           if ! command -v java &> /dev/null
           then
               echo "java could not be found. Please see actions/setup-java to set it up before running this action."
@@ -350,14 +346,14 @@ runs:
       env:
         INPUT_JAVA_VALIDATION_ENABLED: ${{ inputs.JAVA_VALIDATION_ENABLED }}
     - name: Download Java Validator
-      run: "if [ \"$INPUT_JAVA_VALIDATION_ENABLED\" = 'true' ]; then\n  CHECK_JAVA_VERSION=$(java -version 2>&1 | head -1 | cut -d'\"' -f2)\n  echo \"JAVA_VERSION: $CHECK_JAVA_VERSION\"\n  echo \"JAVA_VALIDATOR_VERSION: $JAVA_VALIDATOR_VERSION\"\n  JAVA_VALIDATOR_DOWNLOAD_LOCATION=\"${JAVA_VALIDATOR_DOWNLOAD_LOCATION//'$JAVA_VALIDATOR_VERSION'/$JAVA_VALIDATOR_VERSION}\"\n  echo \"JAVA_VALIDATOR_DOWNLOAD_LOCATION: $JAVA_VALIDATOR_DOWNLOAD_LOCATION\"\n  \n  wget -q \"$JAVA_VALIDATOR_DOWNLOAD_LOCATION\" -O validator_cli.jar\nfi\n"
+      run: "if $INPUT_JAVA_VALIDATION_ENABLED; then\n  CHECK_JAVA_VERSION=$(java -version 2>&1 | head -1 | cut -d'\"' -f2)\n  echo \"JAVA_VERSION: $CHECK_JAVA_VERSION\"\n  echo \"JAVA_VALIDATOR_VERSION: $JAVA_VALIDATOR_VERSION\"\n  JAVA_VALIDATOR_DOWNLOAD_LOCATION=\"${JAVA_VALIDATOR_DOWNLOAD_LOCATION//'$JAVA_VALIDATOR_VERSION'/$JAVA_VALIDATOR_VERSION}\"\n  echo \"JAVA_VALIDATOR_DOWNLOAD_LOCATION: $JAVA_VALIDATOR_DOWNLOAD_LOCATION\"\n  \n  wget -q \"$JAVA_VALIDATOR_DOWNLOAD_LOCATION\" -O validator_cli.jar\nfi\n"
       shell: bash
       env:
         JAVA_VALIDATOR_VERSION: ${{ inputs.JAVA_VALIDATOR_VERSION }}
         JAVA_VALIDATOR_DOWNLOAD_LOCATION: ${{ inputs.JAVA_VALIDATOR_DOWNLOAD_LOCATION }}
         INPUT_JAVA_VALIDATION_ENABLED: ${{ inputs.JAVA_VALIDATION_ENABLED }}
     - name: Validate all conformance resources in scope of the repository
-      run: "\n# Define color codes\nERROR=$'\\033[0;31m'\nWARN=$'\\033[0;33m'\nINFO=$'\\033[0;34m'\nOK=$'\\033[0;32m'\nNC=$'\\033[0m'\n      \nif [ \"$INPUT_JAVA_VALIDATION_ENABLED\" = 'true' ]; then\n  echo \"Starting validation using Java validator (Conformance resources) ...\"\n  \n  # Determine core FHIR spec package name based on FHIR version to avoid conflicts with -version parameter\n  case \"$FHIR_VERSION\" in\n    \"3.0.2\") CORE_FHIR_PACKAGE=\"hl7.fhir.r3.core\" ;;\n    \"4.0.1\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4.core\" ;;\n    \"4.1.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4b.core\" ;;\n    \"4.6.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    \"5.0.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    *) CORE_FHIR_PACKAGE=\"\" ;;\n  esac\n  \n  # Filter out core FHIR spec to prevent conflict with -version parameter\n  if [ -n \"$CORE_FHIR_PACKAGE\" ]; then\n    echo \"Filtering out $CORE_FHIR_PACKAGE from dependencies to prevent conflict with -version $FHIR_VERSION\"\n    IG_DEPENDENCIES=$(jq -r --arg core \"$CORE_FHIR_PACKAGE\" '(.dependencies + .[\"devDependencies\"]) | to_entries | map(select(.key != $core)) | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  else\n    IG_DEPENDENCIES=$(jq -r '(.dependencies + .[\"devDependencies\"]) | to_entries | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  fi\n  \n  echo \"IG_DEPENDENCIES: $IG_DEPENDENCIES\"\n  \n  IFS=' ' read -ra conformance_paths <<< \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\"\n  LOCAL_IG_PARAMETERS=()\n  for p in \"${conformance_paths[@]}\"; # Get combined path to conformance resources, we want to provide all other directories as context for the current validation\n  do  \n    LOCAL_IG_PARAMETERS+=(\"-ig\" \"$GITHUB_WORKSPACE/$p\")\n  done\n\n  java_validation_opts=()\n  if [ -n \"$INPUT_JAVA_VALIDATION_OPTIONS\" ]; then\n    IFS=' ' read -ra java_validation_opts <<< \"$INPUT_JAVA_VALIDATION_OPTIONS\"\n  fi\n  \n  for p in \"${conformance_paths[@]}\"; \n  do\n  \n    # Ensure directory ends with \"/\"\n    if [[ ! \"$p\" =~ .*/$ ]]; then\n      p=\"$p/\"\n    fi\n    \n    IFS=' ' read -ra UNESCPAED_IG_DEPENDENCIES <<< \"$(echo \"$IG_DEPENDENCIES\" | tr -d '\"')\"\n    \n    if echo \"$INPUT_EXPECTED_FAILS\" | grep -w -q VALIDATION_CONFORMANCE_JAVA; then\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_validation_opts[@]}\" \"${UNESCPAED_IG_DEPENDENCIES[@]}\" \"${LOCAL_IG_PARAMETERS[@]}\" || true)\n    else\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_validation_opts[@]}\" \"${UNESCPAED_IG_DEPENDENCIES[@]}\" \"${LOCAL_IG_PARAMETERS[@]}\")\n    fi\n\n    javaValidatorOutput=$(echo \"$javaValidatorOutput\" | sed -E \"\n      s/(:[[:space:]]*)Error([[:space:]]+-)/\\1${ERROR}Error${NC}\\2/g;\n      s/(:[[:space:]]*)Warning([[:space:]]+-)/\\1${WARN}Warning${NC}\\2/g;\n      s/(:[[:space:]]*)Information([[:space:]]+-)/\\1${INFO}Information${NC}\\2/g;\n      s/(-[[:space:]]+)All OK/\\1${OK}All OK${NC}/g\n    \")\n\n    echo -e \"$javaValidatorOutput\"\n    \n  done\nfi\necho \"Finished validation using Java validator (Conformance resources) ...\"\n"
+      run: "\n# Define color codes\nERROR=$'\\033[0;31m'\nWARN=$'\\033[0;33m'\nINFO=$'\\033[0;34m'\nOK=$'\\033[0;32m'\nNC=$'\\033[0m'\n      \nif $INPUT_JAVA_VALIDATION_ENABLED; then\n  echo \"Starting validation using Java validator (Conformance resources) ...\"\n  \n  # Determine core FHIR spec package name based on FHIR version to avoid conflicts with -version parameter\n  case \"$FHIR_VERSION\" in\n    \"3.0.2\") CORE_FHIR_PACKAGE=\"hl7.fhir.r3.core\" ;;\n    \"4.0.1\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4.core\" ;;\n    \"4.1.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4b.core\" ;;\n    \"4.6.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    \"5.0.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    *) CORE_FHIR_PACKAGE=\"\" ;;\n  esac\n  \n  # Filter out core FHIR spec to prevent conflict with -version parameter\n  if [ -n \"$CORE_FHIR_PACKAGE\" ]; then\n    echo \"Filtering out $CORE_FHIR_PACKAGE from dependencies to prevent conflict with -version $FHIR_VERSION\"\n    IG_DEPENDENCIES=$(jq -r --arg core \"$CORE_FHIR_PACKAGE\" '(.dependencies + .[\"devDependencies\"]) | to_entries | map(select(.key != $core)) | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  else\n    IG_DEPENDENCIES=$(jq -r '(.dependencies + .[\"devDependencies\"]) | to_entries | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  fi\n  \n  echo \"IG_DEPENDENCIES: $IG_DEPENDENCIES\"\n  \n  read -ra conformance_paths <<< \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\"\n  for p in \"${conformance_paths[@]}\"; # Get combined path to conformance resources, we want to provide all other directories as context for the current validation\n  do  \n    LOCAL_IG_PARAMETERS+=\"-ig $GITHUB_WORKSPACE/$p \"\n  done\n  \n  for p in \"${conformance_paths[@]}\"; \n  do\n  \n    # Ensure directory ends with \"/\"\n    if [[ ! \"$p\" =~ .*/$ ]]; then\n      p=\"$p/\"\n    fi\n    \n    UNESCPAED_IG_DEPENDENCIES=$(echo \"$IG_DEPENDENCIES\" | tr -d '\"')\n\n    # Build optional java validation options array to avoid word-splitting injection\n    java_opts=()\n    if [ -n \"$INPUT_JAVA_VALIDATION_OPTIONS\" ]; then\n      read -ra java_opts <<< \"$INPUT_JAVA_VALIDATION_OPTIONS\"\n    fi\n    \n    if echo \"$INPUT_EXPECTED_FAILS\" | grep -w -q VALIDATION_CONFORMANCE_JAVA; then\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_opts[@]}\" $UNESCPAED_IG_DEPENDENCIES $LOCAL_IG_PARAMETERS|| true)\n    else\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_opts[@]}\" $UNESCPAED_IG_DEPENDENCIES $LOCAL_IG_PARAMETERS)\n    fi\n\n    javaValidatorOutput=$(echo \"$javaValidatorOutput\" | sed -E \"\n      s/(:[[:space:]]*)Error([[:space:]]+-)/\\1${ERROR}Error${NC}\\2/g;\n      s/(:[[:space:]]*)Warning([[:space:]]+-)/\\1${WARN}Warning${NC}\\2/g;\n      s/(:[[:space:]]*)Information([[:space:]]+-)/\\1${INFO}Information${NC}\\2/g;\n      s/(-[[:space:]]+)All OK/\\1${OK}All OK${NC}/g\n    \")\n\n    echo -e \"$javaValidatorOutput\"\n    \n  done\nfi\necho \"Finished validation using Java validator (Conformance resources) ...\"\n"
       shell: bash
       env:
         FHIR_VERSION: ${{ env.FHIR_VERSION }}
@@ -366,7 +362,7 @@ runs:
         INPUT_EXPECTED_FAILS: ${{ inputs.EXPECTED_FAILS }}
         INPUT_JAVA_VALIDATION_OPTIONS: ${{ inputs.JAVA_VALIDATION_OPTIONS }}
     - name: Validate all example resources in scope of the repository
-      run: "\n# Define color codes\nERROR=$'\\033[0;31m'\nWARN=$'\\033[0;33m'\nINFO=$'\\033[0;34m'\nOK=$'\\033[0;32m'\nNC=$'\\033[0m'\n\nif [ \"$INPUT_JAVA_VALIDATION_ENABLED\" = 'true' ]; then\n  # Determine core FHIR spec package name based on FHIR version to avoid conflicts with -version parameter\n  case \"$FHIR_VERSION\" in\n    \"3.0.2\") CORE_FHIR_PACKAGE=\"hl7.fhir.r3.core\" ;;\n    \"4.0.1\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4.core\" ;;\n    \"4.1.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4b.core\" ;;\n    \"4.6.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    \"5.0.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    *) CORE_FHIR_PACKAGE=\"\" ;;\n  esac\n  \n  # Filter out core FHIR spec to prevent conflict with -version parameter\n  if [ -n \"$CORE_FHIR_PACKAGE\" ]; then\n    IG_DEPENDENCIES=$(jq -r --arg core \"$CORE_FHIR_PACKAGE\" '(.dependencies + .[\"zts-dependencies\"]) | to_entries | map(select(.key != $core)) | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  else\n    IG_DEPENDENCIES=$(jq -r '(.dependencies + .[\"zts-dependencies\"]) | to_entries | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  fi\n  IFS=' ' read -ra conformance_paths <<< \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\"\n  COMBINED_IG_PARAMETERS=()\n  for p in \"${conformance_paths[@]}\"; # Get combined path to conformance resources, we want to validate against the current version of the conformance resources\n  do  \n    COMBINED_IG_PARAMETERS+=(\"-ig\" \"$GITHUB_WORKSPACE/$p\")\n  done\n\n  java_validation_opts=()\n  if [ -n \"$INPUT_JAVA_VALIDATION_OPTIONS\" ]; then\n    IFS=' ' read -ra java_validation_opts <<< \"$INPUT_JAVA_VALIDATION_OPTIONS\"\n  fi\n\n  IFS=' ' read -ra example_paths <<< \"$PATH_TO_EXAMPLES\"\n  for p in \"${example_paths[@]}\"; \n  do\n    \n    # Ensure directory ends with \"/\"\n    if [[ ! \"$p\" =~ .*/$ ]]; then\n      p=\"$p/\"\n    fi\n  \n    IFS=' ' read -ra UNESCPAED_IG_DEPENDENCIES <<< \"$(echo \"$IG_DEPENDENCIES\" | tr -d '\"')\"\n    \n    if echo \"$INPUT_EXPECTED_FAILS\" | grep -w -q VALIDATION_EXAMPLES_JAVA; then\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_validation_opts[@]}\" \"${UNESCPAED_IG_DEPENDENCIES[@]}\" \"${COMBINED_IG_PARAMETERS[@]}\" || true)\n    else\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_validation_opts[@]}\" \"${UNESCPAED_IG_DEPENDENCIES[@]}\" \"${COMBINED_IG_PARAMETERS[@]}\")\n    fi\n\n    javaValidatorOutput=$(echo \"$javaValidatorOutput\" | sed -E \"\n      s/(:[[:space:]]*)Error([[:space:]]+-)/\\1${ERROR}Error${NC}\\2/g;\n      s/(:[[:space:]]*)Warning([[:space:]]+-)/\\1${WARN}Warning${NC}\\2/g;\n      s/(:[[:space:]]*)Information([[:space:]]+-)/\\1${INFO}Information${NC}\\2/g;\n      s/(-[[:space:]]+)All OK/\\1${OK}All OK${NC}/g\n    \")\n    echo -e \"$javaValidatorOutput\"\n    \n  done\nfi\n"
+      run: "\n# Define color codes\nERROR=$'\\033[0;31m'\nWARN=$'\\033[0;33m'\nINFO=$'\\033[0;34m'\nOK=$'\\033[0;32m'\nNC=$'\\033[0m'\n\nif $INPUT_JAVA_VALIDATION_ENABLED; then\n  # Determine core FHIR spec package name based on FHIR version to avoid conflicts with -version parameter\n  case \"$FHIR_VERSION\" in\n    \"3.0.2\") CORE_FHIR_PACKAGE=\"hl7.fhir.r3.core\" ;;\n    \"4.0.1\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4.core\" ;;\n    \"4.1.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r4b.core\" ;;\n    \"4.6.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    \"5.0.0\") CORE_FHIR_PACKAGE=\"hl7.fhir.r5.core\" ;;\n    *) CORE_FHIR_PACKAGE=\"\" ;;\n  esac\n  \n  # Filter out core FHIR spec to prevent conflict with -version parameter\n  if [ -n \"$CORE_FHIR_PACKAGE\" ]; then\n    IG_DEPENDENCIES=$(jq -r --arg core \"$CORE_FHIR_PACKAGE\" '(.dependencies + .[\"zts-dependencies\"]) | to_entries | map(select(.key != $core)) | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  else\n    IG_DEPENDENCIES=$(jq -r '(.dependencies + .[\"zts-dependencies\"]) | to_entries | map(\"-ig \" + .key + \"#\" + .value) | join(\" \")' package.json)\n  fi\n  read -ra conformance_paths <<< \"$INPUT_PATH_TO_CONFORMANCE_RESOURCES\"\n  for p in \"${conformance_paths[@]}\"; # Get combined path to conformance resources, we want to validate against the current version of the conformance resources\n  do  \n    COMBINED_IG_PARAMETERS+=\"-ig $GITHUB_WORKSPACE/$p \"\n  done\n  \n  read -ra example_paths <<< \"$PATH_TO_EXAMPLES\"\n  for p in \"${example_paths[@]}\"; \n  do\n    \n    # Ensure directory ends with \"/\"\n    if [[ ! \"$p\" =~ .*/$ ]]; then\n      p=\"$p/\"\n    fi\n  \n    UNESCPAED_IG_DEPENDENCIES=$(echo \"$IG_DEPENDENCIES\" | tr -d '\"')\n\n    # Build optional java validation options array to avoid word-splitting injection\n    java_opts=()\n    if [ -n \"$INPUT_JAVA_VALIDATION_OPTIONS\" ]; then\n      read -ra java_opts <<< \"$INPUT_JAVA_VALIDATION_OPTIONS\"\n    fi\n    \n    if echo \"$INPUT_EXPECTED_FAILS\" | grep -w -q VALIDATION_EXAMPLES_JAVA; then\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_opts[@]}\" $UNESCPAED_IG_DEPENDENCIES $COMBINED_IG_PARAMETERS || true)\n    else\n      javaValidatorOutput=$(java -jar validator_cli.jar \"$GITHUB_WORKSPACE/$p\"*.xml \"$GITHUB_WORKSPACE/$p\"*.json -version \"$FHIR_VERSION\" \"${java_opts[@]}\" $UNESCPAED_IG_DEPENDENCIES $COMBINED_IG_PARAMETERS)\n    fi\n\n    javaValidatorOutput=$(echo \"$javaValidatorOutput\" | sed -E \"\n      s/(:[[:space:]]*)Error([[:space:]]+-)/\\1${ERROR}Error${NC}\\2/g;\n      s/(:[[:space:]]*)Warning([[:space:]]+-)/\\1${WARN}Warning${NC}\\2/g;\n      s/(:[[:space:]]*)Information([[:space:]]+-)/\\1${INFO}Information${NC}\\2/g;\n      s/(-[[:space:]]+)All OK/\\1${OK}All OK${NC}/g\n    \")\n    echo -e \"$javaValidatorOutput\"\n    \n  done\nfi\n"
       shell: bash
       env:
         INPUT_PATH_TO_CONFORMANCE_RESOURCES: ${{ inputs.PATH_TO_CONFORMANCE_RESOURCES }}
@@ -380,13 +376,9 @@ runs:
     # --------------------------------------------------------------------------------------------------- #
     - name: Re-run SUSHI to restore conformance resources after slicing modification
       run: |
-        if [ "$CLOSE_SLICING_FOR_VALIDATION" = 'true' ] && [ "$INPUT_SUSHI_ENABLED" = 'true' ]; then
+        if $CLOSE_SLICING_FOR_VALIDATION && $INPUT_SUSHI_ENABLED; then
           echo "Re-running SUSHI to restore conformance resources after closing slicing for validation ..."
-          sushi_args=()
-          if [ -n "$INPUT_SUSHI_OPTIONS" ]; then
-            IFS=' ' read -ra sushi_args <<< "$INPUT_SUSHI_OPTIONS"
-          fi
-          sushi "${sushi_args[@]}"
+          sushi ${INPUT_SUSHI_OPTIONS:+"$INPUT_SUSHI_OPTIONS"}
         fi
       shell: bash
       env:

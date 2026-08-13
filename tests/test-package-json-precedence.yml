@@ -1,0 +1,77 @@
+name: Test - package.json takes precedence over sushi-config.yaml
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Pre-install yq since sushi-config.yaml will be present.
+      # The action's "Install yq" step uses hashFiles() which may not work under act,
+      # so we install yq here to ensure it's available when the action needs it.
+      - name: Install yq
+        run: |
+          YQ_VERSION=$(curl -s https://api.github.com/repos/mikefarah/yq/releases/latest | jq -r '.tag_name')
+          if [ -z "$YQ_VERSION" ] || [ "$YQ_VERSION" = "null" ]; then
+            YQ_VERSION="v4.44.3"
+          fi
+          sudo wget -qO /usr/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/bin/yq
+          echo "yq version: $(yq --version)"
+
+      # Set up both package.json and sushi-config.yaml
+      # package.json should take precedence (SUSHI_USE_CONFIG_DEPENDENCIES=false by default)
+      - name: Set up package.json (R4) and sushi-config.yaml (R5)
+        run: |
+          # package.json with R4 - should take precedence
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          # sushi-config.yaml with R5 - should be ignored when package.json exists
+          cat > "$GITHUB_WORKSPACE/sushi-config.yaml" << 'EOF'
+          id: example.fhir.project
+          canonical: http://example.org/fhir
+          name: ExampleFHIRProject
+          status: draft
+          version: 1.0.0
+          fhirVersion: 5.0.0
+          dependencies: {}
+          EOF
+          echo "Both files created"
+
+      # Enable JAVA_VALIDATION_ENABLED so FHIR version detection runs.
+      # continue-on-error=true because Java validation may fail later.
+      - name: Run action with both files present (package.json should win)
+        id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          SUSHI_USE_CONFIG_DEPENDENCIES: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert package.json FHIR version was used (4.0.1, not 5.0.0)
+        env:
+          FHIR_VERSION: ${{ env.FHIR_VERSION }}
+        run: |
+          echo "FHIR_VERSION: $FHIR_VERSION"
+          if [ "$FHIR_VERSION" != "4.0.1" ]; then
+            echo "FAIL: expected FHIR_VERSION=4.0.1 (from package.json) but got: $FHIR_VERSION"
+            exit 1
+          fi
+          echo "PASS: package.json correctly took precedence, FHIR version: $FHIR_VERSION"
+
+      - name: Cleanup workspace files
+        if: always()
+        run: |
+          rm -f "$GITHUB_WORKSPACE/package.json" "$GITHUB_WORKSPACE/sushi-config.yaml"

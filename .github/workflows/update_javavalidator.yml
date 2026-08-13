@@ -1,0 +1,82 @@
+# This is a workflow to help to update the [FHIR Java Validator](https://github.com/hapifhir/org.hl7.fhir.core) dependency automatically 
+
+name: Update FHIR Java validator (Cron Job)
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-java-validator-updates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install yq
+        run: |
+          mkdir -p ~/bin
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O ~/bin/yq
+          chmod +x ~/bin/yq
+          echo "~/bin" >> $GITHUB_PATH
+
+      - name: Extract with default version of the Java validator from the GH action
+        run: |
+          JAVA_VALIDATOR_VERSION=$(yq '.inputs.JAVA_VALIDATOR_VERSION.default' action.yml)
+          echo "JAVA_VALIDATOR_VERSION: '$JAVA_VALIDATOR_VERSION'"
+          safe_version=$(printf '%s' "$JAVA_VALIDATOR_VERSION" | tr -d '\n\r')
+          echo "JAVA_VALIDATOR_VERSION=$safe_version" >> "$GITHUB_ENV"
+
+      - name: Extract with latest release version of Java validator
+        run: |
+          LATEST_RELEASE=$(wget -qO- https://api.github.com/repos/hapifhir/org.hl7.fhir.core/releases/latest | jq -r '.tag_name')
+          echo "LATEST_RELEASE: '$LATEST_RELEASE'"
+          safe_release=$(printf '%s' "$LATEST_RELEASE" | tr -d '\n\r')
+          echo "LATEST_RELEASE=$safe_release" >> "$GITHUB_ENV"
+
+      - name: Compare versions of Java validator
+        run: |
+          if dpkg --compare-versions "$JAVA_VALIDATOR_VERSION" lt "$LATEST_RELEASE"; then
+            echo "Found outdated version of Java validator, update recommended."
+            JAVA_UPDATE_RECOMMENDED="true"
+            echo "JAVA_UPDATE_RECOMMENDED=$JAVA_UPDATE_RECOMMENDED" >> $GITHUB_ENV
+          elif dpkg --compare-versions "$JAVA_VALIDATOR_VERSION" gt "$LATEST_RELEASE"; then
+            echo "Unexpected version of Java validator found, it appears to be higher than the latest release version."
+            exit 1
+          else
+            JAVA_UPDATE_RECOMMENDED="false"
+            echo "JAVA_UPDATE_RECOMMENDED=$JAVA_UPDATE_RECOMMENDED" >> $GITHUB_ENV
+            echo "Java validator is up-to-date."
+          fi
+
+      - name: Create patch for Java validator version in action.yml
+        run: |
+          if [[ "$JAVA_UPDATE_RECOMMENDED" == "false" ]]; then
+            echo "Java validator is up-to-date. Skip creating a PR."
+            exit 0
+          fi
+          
+          BRANCH_NAME="update-java-validator-version-$LATEST_RELEASE"
+          REMOTE_REPO="https://github.com/FirelyTeam/firely-terminal-pipeline.git"
+          if git ls-remote --heads "$REMOTE_REPO" "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+            echo "Branch '$BRANCH_NAME' already exists. Skipping creation of PR."
+            exit 0
+          fi
+          
+          git checkout -b "$BRANCH_NAME"
+          sed -i "/JAVA_VALIDATOR_VERSION:/,/default:/s/\(default: \).*/\1'$LATEST_RELEASE'/" action.yml
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add action.yml
+          git commit -m "Update JAVA_VALIDATOR_VERSION to $LATEST_RELEASE"
+          git push -u origin "$BRANCH_NAME"
+          gh pr create --base main --head "$BRANCH_NAME" --title "Update JAVA_VALIDATOR_VERSION to $LATEST_RELEASE" --body "This PR updates the JAVA_VALIDATOR_VERSION to $LATEST_RELEASE."
+        env:
+          GH_TOKEN: ${{ github.token }}
