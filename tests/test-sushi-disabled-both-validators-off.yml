@@ -1,39 +1,37 @@
-name: Test SUSHI_OPTIONS input
+name: Test - SUSHI disabled, both validators off
 on:
   workflow_dispatch:
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Create minimal package.json for action
+      - name: Create test fixtures
         run: |
-          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          mkdir -p conformance-resources examples
+          cat > package.json << 'EOF'
           {
-            "name": "test-project",
+            "name": "test-fhir-project",
             "version": "1.0.0",
             "fhirVersions": ["4.0.1"],
             "dependencies": {}
           }
           EOF
 
-      - name: Create conformance resources directory
-        run: mkdir -p "$GITHUB_WORKSPACE/resources"
-
       - id: action
         uses: .
         with:
-          PATH_TO_CONFORMANCE_RESOURCES: resources
+          PATH_TO_CONFORMANCE_RESOURCES: conformance-resources
+          PATH_TO_EXAMPLES: examples
           DOTNET_VALIDATION_ENABLED: false
           JAVA_VALIDATION_ENABLED: false
           SUSHI_ENABLED: false
-          SUSHI_OPTIONS: --snapshot
           SIMPLIFIER_USERNAME: test@example.com
-          SIMPLIFIER_PASSWORD: test-password
+          SIMPLIFIER_PASSWORD: testpassword
 
       - name: Assert action completed successfully
         run: |
-          echo "Action completed with SUSHI disabled"
-          echo "SUSHI_OPTIONS input was accepted (not used since SUSHI_ENABLED=false)"
+          echo "Action completed without errors when both validators are disabled"
           echo "PASS"

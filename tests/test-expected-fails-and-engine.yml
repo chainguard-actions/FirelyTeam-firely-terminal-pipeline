@@ -1,4 +1,4 @@
-name: Test SUSHI_OPTIONS input
+name: Test EXPECTED_FAILS and FIRELY_TERMINAL_VALIDATOR_ENGINE inputs
 on:
   workflow_dispatch:
 jobs:
@@ -28,12 +28,14 @@ jobs:
           DOTNET_VALIDATION_ENABLED: false
           JAVA_VALIDATION_ENABLED: false
           SUSHI_ENABLED: false
-          SUSHI_OPTIONS: --snapshot
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+          PATH_TO_QUALITY_CONTROL_RULES: rules/custom
           SIMPLIFIER_USERNAME: test@example.com
           SIMPLIFIER_PASSWORD: test-password
 
       - name: Assert action completed successfully
         run: |
-          echo "Action completed with SUSHI disabled"
-          echo "SUSHI_OPTIONS input was accepted (not used since SUSHI_ENABLED=false)"
+          echo "Action completed with both validators disabled"
+          echo "EXPECTED_FAILS, FIRELY_TERMINAL_VALIDATOR_ENGINE, and PATH_TO_QUALITY_CONTROL_RULES inputs were accepted"
           echo "PASS"

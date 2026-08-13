@@ -1,0 +1,30 @@
+name: Test - sushi-config.yaml present, both validators disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create sushi-config.yaml (no package.json)
+        run: |
+          mkdir -p conformance-resources
+          rm -f package.json
+          printf 'id: test.fhir.project\nname: TestFHIRProject\nversion: 1.0.0\nfhirVersion: 4.0.1\ndependencies:\n  hl7.fhir.r4.core: 4.0.1\n' > sushi-config.yaml
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance-resources
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+
+      - name: Assert action completed successfully with sushi-config.yaml
+        run: |
+          echo "Action completed without errors when both validators are disabled with sushi-config.yaml present"
+          echo "PASS"

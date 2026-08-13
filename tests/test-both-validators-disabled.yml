@@ -1,0 +1,43 @@
+name: Test - Both validators disabled (smoke test)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal package.json with FHIR version (needed if validation were enabled,
+      # but also present to avoid errors in any path that checks for it)
+      - name: Create test package.json
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create a minimal conformance resources directory
+      - name: Create test conformance resources directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed without errors"
+          echo "PASS: Both validators disabled - action ran successfully"
