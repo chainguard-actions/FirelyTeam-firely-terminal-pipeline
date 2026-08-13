@@ -1,0 +1,59 @@
+name: Test - SUSHI config to package.json conversion
+on:
+  workflow_dispatch:
+
+jobs:
+  test-sushi-config-conversion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install yq for YAML processing (pre-install since hashFiles cannot detect dynamic files)
+        run: |
+          YQ_VERSION="v4.44.3"
+          sudo wget -qO /usr/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/bin/yq
+          echo "Installed yq version: $(yq --version)"
+
+      - name: Set up sushi-config.yaml (no package.json) in workspace root
+        run: |
+          # Remove any existing package.json to ensure sushi-config.yaml is used
+          rm -f "$GITHUB_WORKSPACE/package.json"
+          # Copy committed fixture sushi-config.yaml to workspace root
+          cp "$GITHUB_WORKSPACE/tests/fixtures/sushi-config.yaml" "$GITHUB_WORKSPACE/sushi-config.yaml"
+          echo "sushi-config.yaml contents:"
+          cat "$GITHUB_WORKSPACE/sushi-config.yaml"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: ${{ github.workspace }}/tests/fixtures/resources
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+
+      - name: Assert package.json was created from sushi-config.yaml
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/package.json" ]; then
+            echo "FAIL: package.json was not created from sushi-config.yaml"
+            exit 1
+          fi
+          echo "package.json contents:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+          FHIR_VERSION=$(jq -r '.fhirVersions[0]' "$GITHUB_WORKSPACE/package.json")
+          echo "FHIR version in generated package.json: $FHIR_VERSION"
+          if [ "$FHIR_VERSION" != "4.0.1" ]; then
+            echo "FAIL: Expected FHIR version '4.0.1' but got '$FHIR_VERSION'"
+            exit 1
+          fi
+          echo "PASS: package.json correctly generated from sushi-config.yaml with FHIR version 4.0.1"
+
+      - name: Cleanup test files
+        if: always()
+        run: |
+          rm -f "$GITHUB_WORKSPACE/sushi-config.yaml"
+          rm -f "$GITHUB_WORKSPACE/package.json"

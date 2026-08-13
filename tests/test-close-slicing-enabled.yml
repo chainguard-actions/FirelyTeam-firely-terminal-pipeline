@@ -1,0 +1,40 @@
+name: Test - Close slicing enabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test-close-slicing-enabled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up package.json in workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+
+      - name: Set up test resources with open slicing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-resources"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/resources/test-profile.json" "$GITHUB_WORKSPACE/test-resources/test-profile.json"
+          echo "Initial slicing rules:"
+          jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/test-resources/test-profile.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: ${{ github.workspace }}/test-resources
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: true
+
+      - name: Assert slicing rules were changed to closed
+        run: |
+          SLICING_RULES=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/test-resources/test-profile.json")
+          echo "Slicing rules after action: $SLICING_RULES"
+          if [ "$SLICING_RULES" != "closed" ]; then
+            echo "FAIL: Expected slicing rules to be 'closed' but got '$SLICING_RULES'"
+            exit 1
+          fi
+          echo "PASS: Slicing rules correctly changed to 'closed' when CLOSE_SLICING_FOR_VALIDATION=true"

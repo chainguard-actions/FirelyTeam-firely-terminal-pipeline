@@ -1,0 +1,30 @@
+name: Test - SUSHI disabled with no validation
+on:
+  workflow_dispatch:
+
+jobs:
+  test-sushi-disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up package.json in workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          echo "package.json contents:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: ${{ github.workspace }}/tests/fixtures/resources
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+
+      - name: Assert action completed successfully with SUSHI disabled
+        run: |
+          echo "Action completed successfully with SUSHI disabled"
+          echo "PASS: SUSHI disabled path works correctly"

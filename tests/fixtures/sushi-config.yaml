@@ -1,0 +1,8 @@
+id: example.fhir.project
+canonical: http://example.org/fhir
+name: ExampleFHIRProject
+status: draft
+version: 1.0.0
+fhirVersion: 4.0.1
+dependencies:
+  hl7.fhir.us.core: 3.1.0
