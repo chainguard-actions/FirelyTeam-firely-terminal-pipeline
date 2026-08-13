@@ -1,0 +1,48 @@
+name: Test - Package.json dependency strategy (both validators disabled)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create package.json with R4 FHIR version
+        run: |
+          mkdir -p tests/fixtures/conformance
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-r4-project",
+            "version": "1.0.0",
+            "description": "Test FHIR R4 project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_USE_CONFIG_DEPENDENCIES: false
+          SIMPLIFIER_USERNAME: fake-user@example.com
+          SIMPLIFIER_PASSWORD: fake-password
+
+      - name: Assert action completed with package.json strategy
+        run: |
+          echo "Action completed using package.json strategy"
+          if [ ! -f "package.json" ]; then
+            echo "FAIL: package.json should still exist"
+            exit 1
+          fi
+          FHIR_VER=$(jq -r '.fhirVersions[0]' package.json)
+          echo "FHIR version in package.json: $FHIR_VER"
+          if [ "$FHIR_VER" != "4.0.1" ]; then
+            echo "FAIL: Expected FHIR version 4.0.1 but got $FHIR_VER"
+            exit 1
+          fi
+          echo "PASS: package.json strategy works correctly"

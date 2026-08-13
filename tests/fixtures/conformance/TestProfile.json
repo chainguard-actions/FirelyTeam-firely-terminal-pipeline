@@ -1,0 +1,12 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "TestProfile",
+  "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+  "name": "TestProfile",
+  "status": "draft",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint"
+}

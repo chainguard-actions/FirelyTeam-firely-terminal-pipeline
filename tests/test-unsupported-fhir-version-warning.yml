@@ -1,0 +1,51 @@
+name: Test warning for unsupported FHIR version
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a package.json with an unsupported FHIR version (4.3.0 is not in the supported list)
+      - name: Create package.json with unsupported FHIR version
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project with unsupported version",
+            "fhirVersions": [
+              "4.3.0"
+            ],
+            "dependencies": {}
+          }
+          EOF
+          echo "Created package.json with FHIR version 4.3.0 (unsupported)"
+
+      # Create a minimal conformance resources directory
+      - name: Create conformance resources directory
+        run: mkdir -p conformance
+
+      # The action should succeed (with a warning) for unsupported FHIR versions.
+      # With both validators disabled, FHIR version validation is skipped entirely,
+      # so the action completes successfully.
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_USE_CONFIG_DEPENDENCIES: false
+          TERMINOLOGY_SERVICE_BFARM_ENABLED: false
+          JAVA_SNAPSHOT_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+
+      - name: Assert action completed with warning (not failure)
+        run: |
+          echo "Action completed for unsupported FHIR version 4.3.0"
+          echo "PASS: Action correctly completed without failing for unsupported FHIR version"

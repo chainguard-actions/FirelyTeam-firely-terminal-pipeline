@@ -1,0 +1,71 @@
+name: Test error when dotnet not installed but DOTNET_VALIDATION_ENABLED=true
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal package.json
+      - name: Create package.json fixture
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": [
+              "4.0.1"
+            ],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create a minimal conformance resources directory
+      - name: Create conformance resources directory
+        run: mkdir -p conformance
+
+      # Remove dotnet from PATH by setting a clean PATH that excludes dotnet locations.
+      # This change takes effect in subsequent steps (including the action's composite steps).
+      - name: Remove dotnet from PATH
+        run: |
+          # Build a new PATH that excludes any directory containing dotnet
+          NEW_PATH=$(echo "$PATH" | tr ':' '\n' | while read dir; do
+            if [ -x "$dir/dotnet" ]; then
+              echo "Excluding $dir (contains dotnet)" >&2
+            else
+              echo "$dir"
+            fi
+          done | tr '\n' ':' | sed 's/:$//')
+          echo "Original PATH: $PATH"
+          echo "New PATH (dotnet excluded): $NEW_PATH"
+          echo "PATH=$NEW_PATH" >> "$GITHUB_ENV"
+
+      # The action should fail because dotnet is not available but DOTNET_VALIDATION_ENABLED=true
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_USE_CONFIG_DEPENDENCIES: false
+          TERMINOLOGY_SERVICE_BFARM_ENABLED: false
+          JAVA_SNAPSHOT_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+
+      - name: Assert action failed as expected
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "Action outcome: $OUTCOME"
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "FAIL: Expected action to fail when dotnet is not installed but DOTNET_VALIDATION_ENABLED=true, but got: $OUTCOME"
+            exit 1
+          fi
+          echo "PASS: Action correctly failed when dotnet was not found"

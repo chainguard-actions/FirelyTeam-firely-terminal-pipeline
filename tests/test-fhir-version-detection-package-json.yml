@@ -1,0 +1,51 @@
+name: Test FHIR version detection from package.json
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal package.json in the workspace root for the action to detect
+      - name: Create package.json fixture
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": [
+              "4.0.1"
+            ],
+            "dependencies": {}
+          }
+          EOF
+          echo "Created package.json:"
+          cat package.json
+
+      # Create a minimal conformance resources directory
+      - name: Create conformance resources directory
+        run: |
+          mkdir -p conformance
+          echo "Created conformance directory"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_USE_CONFIG_DEPENDENCIES: false
+          TERMINOLOGY_SERVICE_BFARM_ENABLED: false
+          JAVA_SNAPSHOT_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed without error"
+          echo "PASS: Action ran successfully with package.json present and validators disabled"

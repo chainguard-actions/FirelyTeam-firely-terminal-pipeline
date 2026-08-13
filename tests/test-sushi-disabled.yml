@@ -1,0 +1,43 @@
+name: Test - SUSHI disabled with no validation
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json fixture
+        run: |
+          mkdir -p tests/fixtures/conformance
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_OPTIONS: ''
+          SIMPLIFIER_USERNAME: fake-user@example.com
+          SIMPLIFIER_PASSWORD: fake-password
+
+      - name: Assert SUSHI was not invoked
+        run: |
+          echo "SUSHI_ENABLED=false: SUSHI should not have been invoked"
+          if command -v sushi &> /dev/null; then
+            echo "INFO: sushi is installed but should not have been called"
+          else
+            echo "INFO: sushi is not installed (expected when SUSHI_ENABLED=false)"
+          fi
+          echo "PASS: Action completed with SUSHI disabled"

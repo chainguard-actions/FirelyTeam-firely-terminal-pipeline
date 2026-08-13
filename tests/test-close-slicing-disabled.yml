@@ -1,0 +1,64 @@
+name: Test - Close slicing disabled (default behavior)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json and conformance fixture
+        run: |
+          mkdir -p tests/fixtures/conformance
+          # Create a minimal StructureDefinition JSON for testing
+          cat > tests/fixtures/conformance/TestProfile.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "TestProfile",
+            "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+            "name": "TestProfile",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint"
+          }
+          EOF
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          SIMPLIFIER_USERNAME: fake-user@example.com
+          SIMPLIFIER_PASSWORD: fake-password
+
+      - name: Assert conformance file was not modified (slicing not closed)
+        run: |
+          echo "Checking that StructureDefinition was not modified..."
+          if [ ! -f "tests/fixtures/conformance/TestProfile.json" ]; then
+            echo "FAIL: TestProfile.json not found"
+            exit 1
+          fi
+          # Verify the file still has the original content (no slicing modification)
+          RULES=$(jq -r '.differential.element // [] | map(select(.slicing)) | .[0].slicing.rules // "not-set"' tests/fixtures/conformance/TestProfile.json)
+          echo "slicing.rules value: $RULES"
+          if [ "$RULES" = "closed" ]; then
+            echo "FAIL: slicing was closed but CLOSE_SLICING_FOR_VALIDATION=false"
+            exit 1
+          fi
+          echo "PASS: Slicing was not modified (CLOSE_SLICING_FOR_VALIDATION=false)"
