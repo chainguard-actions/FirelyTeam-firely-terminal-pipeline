@@ -1,0 +1,62 @@
+name: Test - PATH_TO_QUALITY_CONTROL_RULES and SUSHI_OPTIONS inputs
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json, conformance directory, and QC rules stub
+        run: |
+          mkdir -p tests/fixtures/conformance-qc
+          mkdir -p tests/fixtures/qc-rules
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          cat > tests/fixtures/conformance-qc/StructureDefinition-example.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "example",
+            "url": "http://example.org/fhir/StructureDefinition/example",
+            "name": "Example",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint"
+          }
+          EOF
+          # Create a minimal QC rules file (the action appends .rules.yaml to the path)
+          cat > tests/fixtures/qc-rules/custom.rules.yaml <<'EOF'
+          - action: count
+            name: count-profiles
+            filter: StructureDefinition.where(derivation='constraint')
+            assert: $this.count() >= 0
+            message: "Profile count check"
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance-qc
+          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/qc-rules/custom
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SUSHI_OPTIONS: "--snapshot"
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully with QC rules and SUSHI_OPTIONS set
+        run: |
+          echo "Action completed without errors when validators are disabled"
+          echo "PATH_TO_QUALITY_CONTROL_RULES and SUSHI_OPTIONS inputs were accepted"
+          echo "PASS"

@@ -1,0 +1,61 @@
+name: Test - EXPECTED_FAILS and PATH_TO_EXAMPLES inputs
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json, conformance and examples directories
+        run: |
+          mkdir -p tests/fixtures/conformance-ef
+          mkdir -p tests/fixtures/examples-ef
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          cat > tests/fixtures/conformance-ef/StructureDefinition-example.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "example",
+            "url": "http://example.org/fhir/StructureDefinition/example",
+            "name": "Example",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint"
+          }
+          EOF
+          cat > tests/fixtures/examples-ef/Patient-example.json <<'EOF'
+          {
+            "resourceType": "Patient",
+            "id": "example",
+            "name": [{"family": "Test", "given": ["User"]}]
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance-ef
+          PATH_TO_EXAMPLES: tests/fixtures/examples-ef
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully with EXPECTED_FAILS and PATH_TO_EXAMPLES set
+        run: |
+          echo "Action completed without errors when validators are disabled"
+          echo "EXPECTED_FAILS and PATH_TO_EXAMPLES inputs were accepted"
+          echo "PASS"

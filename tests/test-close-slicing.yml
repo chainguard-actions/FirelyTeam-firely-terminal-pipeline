@@ -1,0 +1,71 @@
+name: Test - Close slicing pre-processing
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create conformance resources with open slicing
+        run: |
+          mkdir -p tests/fixtures/slicing
+          # Create a StructureDefinition with open slicing
+          cat > tests/fixtures/slicing/StructureDefinition-sliced.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "sliced-example",
+            "url": "http://example.org/fhir/StructureDefinition/sliced-example",
+            "name": "SlicedExample",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient.identifier",
+                  "path": "Patient.identifier",
+                  "slicing": {
+                    "discriminator": [{"type": "value", "path": "system"}],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/slicing
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert slicing was closed in the StructureDefinition
+        run: |
+          echo "Checking if slicing rules were changed to 'closed'..."
+          SLICING_RULES=$(jq -r '.differential.element[0].slicing.rules' tests/fixtures/slicing/StructureDefinition-sliced.json)
+          echo "slicing.rules: $SLICING_RULES"
+          if [ "$SLICING_RULES" = "closed" ]; then
+            echo "PASS: slicing rules were correctly changed to 'closed'"
+          else
+            echo "FAIL: expected slicing rules to be 'closed', got '$SLICING_RULES'"
+            exit 1
+          fi
