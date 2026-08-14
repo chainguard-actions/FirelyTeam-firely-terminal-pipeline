@@ -1,0 +1,35 @@
+name: Test - Both validators disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up a package.json at workspace root so the action can detect FHIR version
+      # if needed (defensive measure). With both validators disabled, FHIR detection
+      # is skipped, but having package.json avoids any edge cases.
+      - name: Set up package.json at workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+          echo "package.json contents:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      # With both validators disabled, the action skips FHIR version detection
+      # and all validation steps. No dotnet or Java needed.
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          SUSHI_ENABLED: 'false'
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed with both validators disabled"
+          echo "PASS: action ran without errors when both validators are disabled"

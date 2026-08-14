@@ -1,0 +1,37 @@
+name: Test - EXPECTED_FAILS and PATH_TO_QUALITY_CONTROL_RULES inputs
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up a package.json at workspace root so the action can detect FHIR version
+      # if needed (defensive measure). With both validators disabled, FHIR detection
+      # is skipped, but having package.json avoids any edge cases.
+      - name: Set up package.json at workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+          echo "package.json contents:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      # With both validators disabled, EXPECTED_FAILS and PATH_TO_QUALITY_CONTROL_RULES
+      # are accepted as inputs but not used. The action should complete successfully.
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
+          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/fhir-r4/qc-rules
+
+      - name: Assert action completed successfully with EXPECTED_FAILS and PATH_TO_QUALITY_CONTROL_RULES
+        run: |
+          echo "PASS: action accepted EXPECTED_FAILS and PATH_TO_QUALITY_CONTROL_RULES inputs"
+          echo "Both validators were disabled so these inputs were not exercised, but they were accepted"

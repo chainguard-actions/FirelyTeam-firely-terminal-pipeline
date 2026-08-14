@@ -1,0 +1,47 @@
+name: Test - Close slicing enabled modifies StructureDefinitions
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up a package.json at workspace root (defensive measure)
+      - name: Set up package.json at workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+
+      # Copy the sliced fixture to a writable temp directory so the action can modify it
+      - name: Set up writable conformance directory with open slicing fixture
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tmp-conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/conformance-sliced/StructureDefinition-SlicedProfile.json" \
+            "$GITHUB_WORKSPACE/tmp-conformance/"
+          echo "Initial slicing.rules:"
+          jq -r '.differential.element[] | select(.slicing) | .slicing.rules' \
+            "$GITHUB_WORKSPACE/tmp-conformance/StructureDefinition-SlicedProfile.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tmp-conformance
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert slicing was closed in StructureDefinition
+        run: |
+          SLICING_RULES=$(jq -r '.differential.element[] | select(.slicing) | .slicing.rules' \
+            "$GITHUB_WORKSPACE/tmp-conformance/StructureDefinition-SlicedProfile.json")
+          echo "slicing.rules after action: $SLICING_RULES"
+          if [ "$SLICING_RULES" = "closed" ]; then
+            echo "PASS: slicing was correctly closed by CLOSE_SLICING_FOR_VALIDATION=true"
+          else
+            echo "FAIL: expected slicing.rules='closed' but got '$SLICING_RULES'"
+            exit 1
+          fi

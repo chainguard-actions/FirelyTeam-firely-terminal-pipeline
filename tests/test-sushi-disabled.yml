@@ -1,0 +1,30 @@
+name: Test - SUSHI disabled skips npm check
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up a package.json at workspace root (defensive measure)
+      - name: Set up package.json at workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+
+      # With SUSHI_ENABLED=false, the action skips all npm/SUSHI steps.
+      # With both validators disabled, no package.json or dotnet is needed.
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed without npm
+        run: |
+          echo "PASS: action completed successfully with SUSHI_ENABLED=false (npm check was skipped)"

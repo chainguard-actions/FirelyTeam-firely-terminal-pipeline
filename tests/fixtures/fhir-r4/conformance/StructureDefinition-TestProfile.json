@@ -1,0 +1,24 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "TestProfile",
+  "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+  "version": "1.0.0",
+  "name": "TestProfile",
+  "title": "Test Profile",
+  "status": "active",
+  "description": "A test profile for CI validation",
+  "fhirVersion": "4.0.1",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient",
+        "path": "Patient"
+      }
+    ]
+  }
+}

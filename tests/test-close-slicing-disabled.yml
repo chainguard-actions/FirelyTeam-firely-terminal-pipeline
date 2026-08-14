@@ -1,0 +1,41 @@
+name: Test - Close slicing disabled (default behavior)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up a package.json at workspace root (defensive measure)
+      - name: Set up package.json at workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'false'
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed with close slicing disabled
+        run: |
+          echo "PASS: action completed successfully with CLOSE_SLICING_FOR_VALIDATION=false (pre-processing skipped)"
+
+      - name: Assert conformance resource was not modified
+        run: |
+          # Verify the StructureDefinition was not modified (slicing not closed)
+          SLICING_RULES=$(jq -r '.differential.element[0].slicing.rules // "not-set"' \
+            "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/conformance/StructureDefinition-TestProfile.json")
+          echo "slicing.rules: $SLICING_RULES"
+          if [ "$SLICING_RULES" = "closed" ]; then
+            echo "FAIL: slicing was closed but CLOSE_SLICING_FOR_VALIDATION=false"
+            exit 1
+          fi
+          echo "PASS: conformance resource was not modified (slicing not closed)"

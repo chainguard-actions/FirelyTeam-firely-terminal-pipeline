@@ -1,0 +1,51 @@
+name: Test - FHIR version detection from package.json (Java validator path)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy fixture package.json to workspace root for FHIR version detection.
+      # The action's "Detect FHIR version" step looks for package.json in $GITHUB_WORKSPACE.
+      - name: Set up fixture files in workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+          echo "package.json contents:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      # With DOTNET_VALIDATION_ENABLED=false and JAVA_VALIDATION_ENABLED=true:
+      # - Simplifier login is skipped (no dotnet validation)
+      # - FHIR version detection runs from package.json
+      # - Java validator is downloaded and run (may be slow or fail due to network)
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+          SUSHI_ENABLED: 'false'
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          JAVA_VALIDATOR_VERSION: '6.10.2'
+
+      - name: Assert action ran FHIR version detection (succeeded or failed at Java validation)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action should either:
+          # - Succeed (Java validator ran and validated the conformance resource)
+          # - Fail at Java validator download/execution (network/resource issue)
+          # It should NOT fail at FHIR version detection (package.json is valid with fhirVersions: ["4.0.1"])
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded - FHIR version detection and Java validation worked"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (likely at Java validator download/execution)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

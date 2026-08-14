@@ -1,0 +1,9 @@
+{
+  "name": "test-fhir-project",
+  "version": "1.0.0",
+  "description": "Test FHIR R4 project for CI testing",
+  "fhirVersions": [
+    "4.0.1"
+  ],
+  "dependencies": {}
+}
