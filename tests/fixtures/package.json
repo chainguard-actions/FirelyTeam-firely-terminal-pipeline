@@ -1,0 +1,7 @@
+{
+  "name": "test-fhir-project",
+  "version": "1.0.0",
+  "description": "Test FHIR project fixture",
+  "fhirVersions": ["4.0.1"],
+  "dependencies": {}
+}

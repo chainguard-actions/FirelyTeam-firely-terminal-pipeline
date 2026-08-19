@@ -1,0 +1,29 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "TestProfile",
+  "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+  "name": "TestProfile",
+  "status": "active",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient.identifier",
+        "path": "Patient.identifier",
+        "slicing": {
+          "discriminator": [
+            {
+              "type": "value",
+              "path": "system"
+            }
+          ],
+          "rules": "open"
+        }
+      }
+    ]
+  }
+}

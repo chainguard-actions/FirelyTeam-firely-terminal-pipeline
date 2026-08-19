@@ -1,0 +1,90 @@
+name: Test - Close Slicing Pre-processing
+on:
+  workflow_dispatch:
+
+jobs:
+  test-close-slicing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - name: Set up conformance resources with open slicing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+          cat > "$GITHUB_WORKSPACE/resources/TestProfile.json" << 'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "TestProfile",
+            "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+            "name": "TestProfile",
+            "status": "active",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient.identifier",
+                  "path": "Patient.identifier",
+                  "slicing": {
+                    "discriminator": [
+                      {
+                        "type": "value",
+                        "path": "system"
+                      }
+                    ],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+
+      - name: Verify initial slicing is open
+        run: |
+          RULES=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/resources/TestProfile.json")
+          echo "Initial slicing rules: $RULES"
+          if [ "$RULES" != "open" ]; then
+            echo "FAIL: Expected initial slicing rules to be 'open' but got '$RULES'"
+            exit 1
+          fi
+          echo "Confirmed: initial slicing rules are 'open'"
+
+      # Run with CLOSE_SLICING_FOR_VALIDATION=true but validation disabled
+      # The pre-processing step should run and modify the JSON file
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert slicing was closed in the StructureDefinition
+        run: |
+          echo "Checking if slicing rules were changed to 'closed'..."
+          RULES=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/resources/TestProfile.json")
+          echo "Slicing rules value: $RULES"
+          if [ "$RULES" = "closed" ]; then
+            echo "PASS: Slicing rules were correctly changed to 'closed'"
+          else
+            echo "FAIL: Expected slicing rules to be 'closed' but got '$RULES'"
+            exit 1
+          fi

@@ -1,0 +1,41 @@
+name: Test - Firely Terminal Validator Engine Input
+on:
+  workflow_dispatch:
+
+jobs:
+  test-validator-engine-input:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - name: Create minimal conformance resources directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+
+      # Test that FIRELY_TERMINAL_VALIDATOR_ENGINE input is accepted without errors
+      # when dotnet validation is disabled (the engine config step is skipped)
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action accepted FIRELY_TERMINAL_VALIDATOR_ENGINE input without errors
+        run: |
+          echo "PASS: Action accepted FIRELY_TERMINAL_VALIDATOR_ENGINE=firely and completed with validation disabled"

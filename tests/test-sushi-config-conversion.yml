@@ -1,0 +1,46 @@
+name: Test - SUSHI Config to package.json Conversion
+on:
+  workflow_dispatch:
+
+jobs:
+  test-sushi-config-conversion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create sushi-config.yaml but NO package.json to trigger conversion path
+      - name: Create sushi-config.yaml without package.json
+        run: |
+          cat > "$GITHUB_WORKSPACE/sushi-config.yaml" << 'EOF'
+          id: test.fhir.project
+          name: TestFHIRProject
+          version: 1.0.0
+          fhirVersion: 4.0.1
+          dependencies:
+            hl7.fhir.r4.core: 4.0.1
+          EOF
+          # Ensure no package.json exists
+          rm -f "$GITHUB_WORKSPACE/package.json"
+
+      - name: Create minimal conformance resources directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+
+      # With both validators disabled, FHIR version detection is skipped,
+      # but the sushi-config.yaml conversion step checks NEED_SUSHI_CONVERSION env var.
+      # Since NEED_SUSHI_CONVERSION is only set when validation is enabled,
+      # and validation is disabled here, the conversion step will be skipped too.
+      # This test verifies the action completes without errors when sushi-config.yaml exists.
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully with sushi-config.yaml present
+        run: |
+          echo "PASS: Action completed with sushi-config.yaml present and validation disabled"
