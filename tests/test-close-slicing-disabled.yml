@@ -1,0 +1,75 @@
+name: Test - Close slicing disabled (default behavior)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json fixture
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - name: Create minimal conformance resources directory with a sample StructureDefinition
+        run: |
+          mkdir -p conformance
+          cat > conformance/TestProfile.json << 'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "TestProfile",
+            "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+            "name": "TestProfile",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient",
+                  "path": "Patient",
+                  "slicing": {
+                    "discriminator": [{"type": "value", "path": "system"}],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          SIMPLIFIER_USERNAME: dummy@example.com
+          SIMPLIFIER_PASSWORD: dummy-password
+
+      - name: Assert action completed with close-slicing disabled
+        run: |
+          echo "PASS: Action completed with CLOSE_SLICING_FOR_VALIDATION=false (default)"
+
+      - name: Assert StructureDefinition slicing rules unchanged
+        run: |
+          RULES=$(jq -r '.differential.element[0].slicing.rules' conformance/TestProfile.json)
+          echo "slicing.rules: $RULES"
+          if [ "$RULES" != "open" ]; then
+            echo "FAIL: Expected slicing rules to remain 'open' but got '$RULES'"
+            exit 1
+          fi
+          echo "PASS: Slicing rules remain 'open' as expected"
