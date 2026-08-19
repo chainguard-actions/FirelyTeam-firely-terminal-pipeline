@@ -1,0 +1,53 @@
+name: Test - Close slicing for validation
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy fixture package.json to workspace root
+      - name: Set up fixture package.json
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+
+      # Copy the sliced StructureDefinition to a temp working directory
+      - name: Set up conformance resources with open slicing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tests/work/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/StructureDefinition-sliced.json" \
+             "$GITHUB_WORKSPACE/tests/work/conformance/StructureDefinition-sliced.json"
+          
+          # Verify the slicing is 'open' before running the action
+          RULES_BEFORE=$(jq -r '.differential.element[0].slicing.rules' \
+            "$GITHUB_WORKSPACE/tests/work/conformance/StructureDefinition-sliced.json")
+          echo "Slicing rules before: $RULES_BEFORE"
+          if [ "$RULES_BEFORE" != "open" ]; then
+            echo "FAIL: Expected slicing rules to be 'open' before action runs"
+            exit 1
+          fi
+          echo "PASS: Slicing rules are 'open' before action runs"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: "tests/work/conformance"
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SUSHI_ENABLED: "false"
+          CLOSE_SLICING_FOR_VALIDATION: "true"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert slicing was closed by the action
+        run: |
+          RULES_AFTER=$(jq -r '.differential.element[0].slicing.rules' \
+            "$GITHUB_WORKSPACE/tests/work/conformance/StructureDefinition-sliced.json")
+          echo "Slicing rules after: $RULES_AFTER"
+          if [ "$RULES_AFTER" != "closed" ]; then
+            echo "FAIL: Expected slicing rules to be 'closed' after action runs, got: $RULES_AFTER"
+            exit 1
+          fi
+          echo "PASS: Slicing rules were correctly changed from 'open' to 'closed'"

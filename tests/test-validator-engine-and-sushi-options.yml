@@ -1,0 +1,31 @@
+name: Test - FIRELY_TERMINAL_VALIDATOR_ENGINE and SUSHI_OPTIONS inputs
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy fixture package.json to workspace root so FHIR version detection can find it
+      - name: Set up fixture package.json
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: "tests/fixtures/conformance"
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: "firely"
+          SUSHI_OPTIONS: "--snapshot"
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SUSHI_ENABLED: "false"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed with FIRELY_TERMINAL_VALIDATOR_ENGINE=firely and SUSHI_OPTIONS set"
+          echo "PASS: action ran without errors when validators and SUSHI are disabled but engine/options inputs are provided"

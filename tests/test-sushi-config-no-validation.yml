@@ -1,0 +1,31 @@
+name: Test - sushi-config.yaml with no validation
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy fixture sushi-config.yaml to workspace root (no package.json)
+      - name: Set up fixture sushi-config.yaml (no package.json)
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/sushi-config.yaml" "$GITHUB_WORKSPACE/sushi-config.yaml"
+          # Ensure no package.json exists at root to test sushi-config.yaml path
+          rm -f "$GITHUB_WORKSPACE/package.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: "tests/fixtures"
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SUSHI_ENABLED: "false"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert action completed successfully with sushi-config.yaml
+        run: |
+          echo "Action completed with sushi-config.yaml and both validators disabled"
+          echo "PASS: action ran without errors when both validators are disabled (sushi-config.yaml present)"
