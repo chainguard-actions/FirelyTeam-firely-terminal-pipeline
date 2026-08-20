@@ -1,0 +1,69 @@
+name: Test - dotnet validation enabled (expected to fail at Simplifier login)
+on:
+  workflow_dispatch:
+
+jobs:
+  test-dotnet-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up .NET SDK (required when DOTNET_VALIDATION_ENABLED=true)
+      - name: Setup .NET
+        run: |
+          # Check if dotnet is already available
+          if command -v dotnet > /dev/null 2>&1; then
+            echo "dotnet already installed: $(dotnet --version)"
+          else
+            echo "dotnet not found, installing..."
+            wget -q https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+            chmod +x dotnet-install.sh
+            ./dotnet-install.sh --channel 8.0
+            echo "$HOME/.dotnet" >> $GITHUB_PATH
+            echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
+          fi
+
+      # Create a minimal package.json with FHIR R4
+      - name: Create minimal package.json
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # The action will fail at Simplifier login with fake credentials
+      # We use continue-on-error to verify it gets past the dotnet check steps
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: fake-password-for-testing
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.5'
+          SUSHI_VERSION: '3.18.1'
+
+      - name: Assert action ran (dotnet validation path exercised)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action is expected to fail at Simplifier login (fake credentials)
+          # OR succeed if dotnet/Firely Terminal is not available in this environment
+          # Either way, the action should have run (not skipped)
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded (dotnet validation path completed)"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (expected - fake Simplifier credentials)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

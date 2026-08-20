@@ -1,0 +1,85 @@
+name: Test - close slicing disabled (default), no validation
+on:
+  workflow_dispatch:
+
+jobs:
+  test-close-slicing-disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal package.json
+      - name: Create minimal package.json
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create a sample StructureDefinition in the committed fixture directory
+      - name: Create conformance resources with StructureDefinition
+        run: |
+          cat > tests/fixtures/conformance/TestProfile.json << 'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "TestProfile",
+            "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+            "name": "TestProfile",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient.name",
+                  "path": "Patient.name",
+                  "slicing": {
+                    "discriminator": [{"type": "value", "path": "use"}],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.5'
+          SUSHI_VERSION: '3.18.1'
+
+      - name: Assert action completed with close slicing disabled
+        run: |
+          echo "Action outcome: ${{ steps.action.outcome }}"
+          if [ "${{ steps.action.outcome }}" != "success" ]; then
+            echo "FAIL: expected action to succeed with CLOSE_SLICING_FOR_VALIDATION=false"
+            exit 1
+          fi
+          echo "PASS: action completed successfully with close slicing disabled"
+
+      - name: Assert StructureDefinition slicing was NOT modified
+        run: |
+          # When CLOSE_SLICING_FOR_VALIDATION=false, slicing rules should remain "open"
+          SLICING_RULES=$(jq -r '.differential.element[0].slicing.rules' tests/fixtures/conformance/TestProfile.json)
+          echo "Slicing rules: $SLICING_RULES"
+          if [ "$SLICING_RULES" != "open" ]; then
+            echo "FAIL: expected slicing rules to remain 'open' when CLOSE_SLICING_FOR_VALIDATION=false"
+            exit 1
+          fi
+          echo "PASS: slicing rules correctly remain 'open'"

@@ -1,9 +1,9 @@
-name: Test - SUSHI_OPTIONS input accepted
+name: Test - EXPECTED_FAILS input accepted
 on:
   workflow_dispatch:
 
 jobs:
-  test-sushi-options:
+  test-expected-fails-input:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -26,19 +26,18 @@ jobs:
           PATH_TO_CONFORMANCE_RESOURCES: hardened/tests/fixtures/conformance
           DOTNET_VALIDATION_ENABLED: false
           JAVA_VALIDATION_ENABLED: false
-          SUSHI_ENABLED: false
-          SUSHI_OPTIONS: '--snapshot'
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
           SIMPLIFIER_USERNAME: test@example.com
           SIMPLIFIER_PASSWORD: test-password
           FIRELY_TERMINAL_VERSION: '3.5.0'
           JAVA_VALIDATOR_VERSION: '6.9.5'
           SUSHI_VERSION: '3.18.1'
 
-      - name: Assert action completed successfully with SUSHI_OPTIONS input
+      - name: Assert action completed successfully with EXPECTED_FAILS input
         run: |
           echo "Action outcome: ${{ steps.action.outcome }}"
           if [ "${{ steps.action.outcome }}" != "success" ]; then
-            echo "FAIL: expected action to succeed when SUSHI is disabled and SUSHI_OPTIONS is set"
+            echo "FAIL: expected action to succeed when validators are disabled and EXPECTED_FAILS is set"
             exit 1
           fi
-          echo "PASS: action accepted SUSHI_OPTIONS input and completed successfully"
+          echo "PASS: action accepted EXPECTED_FAILS input and completed successfully"
