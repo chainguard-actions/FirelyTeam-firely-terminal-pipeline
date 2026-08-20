@@ -1,9 +1,9 @@
-name: Test - SUSHI_OPTIONS input coverage
+name: Test - PATH_TO_EXAMPLES input coverage
 on:
   workflow_dispatch:
 
 jobs:
-  test-sushi-options:
+  test-path-to-examples:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -19,18 +19,23 @@ jobs:
           }
           EOF
 
+      - name: Create examples directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/examples"
+          touch "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/examples/.gitkeep"
+
       - id: action
-        name: Run action with SUSHI_OPTIONS set (SUSHI disabled, both validators disabled)
+        name: Run action with PATH_TO_EXAMPLES set (both validators disabled)
         uses: .
         with:
           PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          PATH_TO_EXAMPLES: tests/fixtures/fhir-r4/examples
           DOTNET_VALIDATION_ENABLED: false
           JAVA_VALIDATION_ENABLED: false
           SUSHI_ENABLED: false
-          SUSHI_OPTIONS: --snapshot
           SIMPLIFIER_USERNAME: test@example.com
           SIMPLIFIER_PASSWORD: test-password
 
       - name: Assert action completed successfully
         run: |
-          echo "PASS: Action completed with SUSHI_OPTIONS set (SUSHI disabled, options not applied)"
+          echo "PASS: Action completed with PATH_TO_EXAMPLES set (validators disabled, examples validation skipped)"

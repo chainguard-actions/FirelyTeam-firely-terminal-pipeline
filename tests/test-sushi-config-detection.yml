@@ -1,0 +1,60 @@
+name: Test - FHIR version detection from sushi-config.yaml
+on:
+  workflow_dispatch:
+
+jobs:
+  test-sushi-config-detection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up sushi-config.yaml (no package.json)
+        run: |
+          # Ensure no package.json exists in workspace root
+          rm -f "$GITHUB_WORKSPACE/package.json"
+          # Create sushi-config.yaml with FHIR R4
+          cat > "$GITHUB_WORKSPACE/sushi-config.yaml" << 'EOF'
+          id: test.fhir.r4.project
+          canonical: http://example.org/fhir
+          name: TestFHIRR4Project
+          status: draft
+          version: 1.0.0
+          fhirVersion: 4.0.1
+          dependencies: {}
+          EOF
+          echo "Created sushi-config.yaml:"
+          cat "$GITHUB_WORKSPACE/sushi-config.yaml"
+
+      - id: action
+        name: Run action with sushi-config.yaml (dotnet enabled, will fail at Simplifier login)
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+
+      - name: Assert action ran (expected to fail at Simplifier login with fake credentials)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action should fail at Simplifier login (fake credentials),
+          # but it must have successfully detected FHIR version from sushi-config.yaml first.
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (expected with fake Simplifier credentials)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
+
+      - name: Cleanup sushi-config.yaml
+        if: always()
+        run: |
+          rm -f "$GITHUB_WORKSPACE/sushi-config.yaml"

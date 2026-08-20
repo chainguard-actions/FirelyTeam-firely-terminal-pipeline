@@ -1,14 +1,14 @@
-name: Test - SUSHI_OPTIONS input coverage
+name: Test - Both validators disabled
 on:
   workflow_dispatch:
 
 jobs:
-  test-sushi-options:
+  test-both-disabled:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Create minimal package.json
+      - name: Create minimal package.json (required for action inputs)
         run: |
           cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
           {
@@ -20,17 +20,16 @@ jobs:
           EOF
 
       - id: action
-        name: Run action with SUSHI_OPTIONS set (SUSHI disabled, both validators disabled)
+        name: Run Firely Terminal action with both validators disabled
         uses: .
         with:
           PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
           DOTNET_VALIDATION_ENABLED: false
           JAVA_VALIDATION_ENABLED: false
-          SUSHI_ENABLED: false
-          SUSHI_OPTIONS: --snapshot
           SIMPLIFIER_USERNAME: test@example.com
           SIMPLIFIER_PASSWORD: test-password
+          SUSHI_ENABLED: false
 
       - name: Assert action completed successfully
         run: |
-          echo "PASS: Action completed with SUSHI_OPTIONS set (SUSHI disabled, options not applied)"
+          echo "PASS: Both validators disabled - action ran to completion without errors"
