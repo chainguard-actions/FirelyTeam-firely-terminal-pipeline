@@ -20,7 +20,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | v0.8.23 | [`v0.8.23`](https://github.com/chainguard-actions/FirelyTeam-firely-terminal-pipeline/tree/v0.8.23) | [`4229466`](https://github.com/FirelyTeam/firely-terminal-pipeline/commit/4229466e5d5631582c0ffb3052e6018c45726714) |
 | v0.8.6 | [`v0.8.6`](https://github.com/chainguard-actions/FirelyTeam-firely-terminal-pipeline/tree/v0.8.6) | [`ddd921b`](https://github.com/FirelyTeam/firely-terminal-pipeline/commit/ddd921b487b794dbbe49511d3bc3d87f73e2f5bf) |
 | v0.8.7 | [`v0.8.7`](https://github.com/chainguard-actions/FirelyTeam-firely-terminal-pipeline/tree/v0.8.7) | — |
-| v0.8.8 | [`v0.8.8`](https://github.com/chainguard-actions/FirelyTeam-firely-terminal-pipeline/tree/v0.8.8) | — |
+| v0.8.8 | [`v0.8.8`](https://github.com/chainguard-actions/FirelyTeam-firely-terminal-pipeline/tree/v0.8.8) | [`deba959`](https://github.com/FirelyTeam/firely-terminal-pipeline/commit/deba9590a15509f14ddf9cbf76b8f730f15f7066) |
 | v0.8.9 | [`v0.8.9`](https://github.com/chainguard-actions/FirelyTeam-firely-terminal-pipeline/tree/v0.8.9) | — |
 
 ## Privacy
