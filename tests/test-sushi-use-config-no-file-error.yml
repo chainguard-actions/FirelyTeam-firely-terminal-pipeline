@@ -1,0 +1,63 @@
+name: Test - SUSHI_USE_CONFIG_DEPENDENCIES Error Handling
+# Tests that the action fails with a clear error when SUSHI_USE_CONFIG_DEPENDENCIES=true
+# but no sushi-config.yaml is present. This validates the error handling path.
+# Uses JAVA_VALIDATION_ENABLED=true and DOTNET_VALIDATION_ENABLED=false to
+# bypass the Simplifier login step and reach FHIR version detection.
+on:
+  workflow_dispatch:
+
+jobs:
+  test-sushi-config-missing-error:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up fixture files WITHOUT sushi-config.yaml (only package.json)
+      - name: Set up fixture files (no sushi-config.yaml)
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/StructureDefinition-example.json" \
+             "$GITHUB_WORKSPACE/conformance/"
+          # Ensure no sushi-config.yaml exists
+          rm -f "$GITHUB_WORKSPACE/sushi-config.yaml"
+
+      - name: Verify no sushi-config.yaml present
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/sushi-config.yaml" ]; then
+            echo "FAIL: sushi-config.yaml should not exist for this test"
+            exit 1
+          fi
+          echo "PASS: sushi-config.yaml is absent as expected"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "true"
+          SUSHI_ENABLED: "false"
+          SUSHI_USE_CONFIG_DEPENDENCIES: "true"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert action failed with expected error
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action should fail because SUSHI_USE_CONFIG_DEPENDENCIES=true
+          # but sushi-config.yaml is not present.
+          # With JAVA_VALIDATION_ENABLED=true and DOTNET_VALIDATION_ENABLED=false,
+          # the action bypasses Simplifier login and reaches FHIR version detection,
+          # where it fails with "SUSHI_USE_CONFIG_DEPENDENCIES=true but sushi-config.yaml not found."
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed as expected (SUSHI_USE_CONFIG_DEPENDENCIES=true but no sushi-config.yaml)"
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "FAIL: action should have failed when SUSHI_USE_CONFIG_DEPENDENCIES=true but sushi-config.yaml is missing"
+            exit 1
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

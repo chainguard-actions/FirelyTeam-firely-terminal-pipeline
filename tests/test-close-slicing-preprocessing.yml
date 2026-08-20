@@ -1,0 +1,55 @@
+name: Test - Close Slicing Pre-processing
+# Tests that the CLOSE_SLICING_FOR_VALIDATION pre-processing step works correctly.
+# With both validators disabled, the action should still run the slicing pre-processing
+# step when CLOSE_SLICING_FOR_VALIDATION=true.
+on:
+  workflow_dispatch:
+
+jobs:
+  test-close-slicing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up fixture files with a StructureDefinition that has open slicing
+      # Use committed fixture files to avoid YAML heredoc issues
+      - name: Set up fixture files with open slicing
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/StructureDefinition-sliced.json" \
+             "$GITHUB_WORKSPACE/conformance/StructureDefinition-sliced.json"
+
+      - name: Verify slicing is open before action runs
+        run: |
+          RULES=$(jq -r '.differential.element[] | select(.slicing) | .slicing.rules' \
+            "$GITHUB_WORKSPACE/conformance/StructureDefinition-sliced.json")
+          echo "Slicing rules before: $RULES"
+          if [ "$RULES" != "open" ]; then
+            echo "FAIL: Expected 'open' slicing rules, got '$RULES'"
+            exit 1
+          fi
+          echo "PASS: Slicing is open before action"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SUSHI_ENABLED: "false"
+          CLOSE_SLICING_FOR_VALIDATION: "true"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert slicing was closed by pre-processing
+        run: |
+          RULES=$(jq -r '.differential.element[] | select(.slicing) | .slicing.rules' \
+            "$GITHUB_WORKSPACE/conformance/StructureDefinition-sliced.json")
+          echo "Slicing rules after: $RULES"
+          if [ "$RULES" = "closed" ]; then
+            echo "PASS: Slicing was correctly closed by pre-processing"
+          else
+            echo "FAIL: Expected 'closed' slicing rules after pre-processing, got '$RULES'"
+            exit 1
+          fi

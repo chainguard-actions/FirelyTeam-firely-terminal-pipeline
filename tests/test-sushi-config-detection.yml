@@ -1,0 +1,51 @@
+name: Test - SUSHI Config Detection (validators disabled)
+# Tests that the action handles sushi-config.yaml presence correctly
+# when both validators and SUSHI are disabled.
+# The FHIR version detection step is skipped when both validators are disabled,
+# so the action should complete successfully.
+on:
+  workflow_dispatch:
+
+jobs:
+  test-sushi-config-detection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up a sushi-config.yaml (no package.json) in the workspace
+      # Use printf to avoid YAML heredoc << parse issues
+      - name: Set up sushi-config.yaml fixture
+        run: |
+          printf 'id: example.fhir.project\ncanonical: http://example.org/fhir\nname: ExampleFHIRProject\nstatus: active\nversion: 1.0.0\nfhirVersion: 4.0.1\ndependencies:\n  hl7.fhir.r4.core: 4.0.1\n' \
+            > "$GITHUB_WORKSPACE/sushi-config.yaml"
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/StructureDefinition-example.json" \
+             "$GITHUB_WORKSPACE/conformance/"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SUSHI_ENABLED: "false"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert action outcome
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # With both validators disabled, the action should succeed
+          # even when sushi-config.yaml is present (FHIR version detection is skipped)
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded with validators disabled and sushi-config.yaml present"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "FAIL: action failed unexpectedly when both validators are disabled"
+            exit 1
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

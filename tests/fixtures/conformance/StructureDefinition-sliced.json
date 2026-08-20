@@ -1,0 +1,36 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "sliced-profile",
+  "url": "http://example.org/fhir/StructureDefinition/sliced-profile",
+  "version": "1.0.0",
+  "name": "SlicedProfile",
+  "title": "Sliced Profile",
+  "status": "active",
+  "fhirVersion": "4.0.1",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient",
+        "path": "Patient"
+      },
+      {
+        "id": "Patient.identifier",
+        "path": "Patient.identifier",
+        "slicing": {
+          "discriminator": [
+            {
+              "type": "value",
+              "path": "system"
+            }
+          ],
+          "rules": "open"
+        }
+      }
+    ]
+  }
+}

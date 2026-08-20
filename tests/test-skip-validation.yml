@@ -1,0 +1,34 @@
+name: Test - Skip All Validation
+# Tests that the action completes successfully when both validators are disabled.
+# In this mode, most steps are skipped and no credentials are needed.
+on:
+  workflow_dispatch:
+
+jobs:
+  test-skip-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy fixture files into workspace so the action can find them
+      - name: Set up fixture files
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/StructureDefinition-example.json" \
+             "$GITHUB_WORKSPACE/conformance/"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SUSHI_ENABLED: "false"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert action completed
+        run: |
+          echo "Action completed successfully with both validators disabled"
+          echo "PASS"
