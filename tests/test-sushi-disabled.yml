@@ -1,0 +1,52 @@
+name: Test - Minimal no-op run (all features disabled)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a package.json with FHIR version info
+      # (not needed when validators are disabled, but good practice)
+      - name: Create package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create a minimal conformance resources directory
+      - name: Create conformance resources directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+
+      # Run with all optional features disabled
+      # This tests the minimal path through the action where all steps are skipped
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          TERMINOLOGY_SERVICE_BFARM_ENABLED: false
+          JAVA_SNAPSHOT_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.10'
+          SUSHI_VERSION: '3.20.0'
+
+      - name: Assert action completed successfully with all features disabled
+        run: |
+          echo "Action completed with all optional features disabled."
+          echo "All validation steps should have been skipped gracefully."
+          echo "PASS: action ran without error in minimal no-op mode"

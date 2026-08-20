@@ -1,0 +1,124 @@
+name: Test - Close slicing skips parent profiles (profiles extended by others)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a package.json with FHIR version info
+      - name: Create package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create two profiles:
+      # - ParentProfile: has open slicing, IS extended by ChildProfile -> should NOT be closed
+      # - ChildProfile: has open slicing, is NOT extended by anyone -> SHOULD be closed
+      - name: Create parent and child profiles with open slicing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+
+          # Parent profile (extended by ChildProfile, so its slicing should NOT be closed)
+          cat > "$GITHUB_WORKSPACE/conformance/ParentProfile.json" <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "ParentProfile",
+            "url": "http://example.org/fhir/StructureDefinition/ParentProfile",
+            "name": "ParentProfile",
+            "status": "active",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient.identifier",
+                  "path": "Patient.identifier",
+                  "slicing": {
+                    "discriminator": [{"type": "value", "path": "system"}],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+
+          # Child profile (extends ParentProfile, not extended by anyone -> slicing SHOULD be closed)
+          cat > "$GITHUB_WORKSPACE/conformance/ChildProfile.json" <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "ChildProfile",
+            "url": "http://example.org/fhir/StructureDefinition/ChildProfile",
+            "name": "ChildProfile",
+            "status": "active",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://example.org/fhir/StructureDefinition/ParentProfile",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient.identifier",
+                  "path": "Patient.identifier",
+                  "slicing": {
+                    "discriminator": [{"type": "value", "path": "system"}],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+
+      # Run the action with CLOSE_SLICING_FOR_VALIDATION=true
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.10'
+          SUSHI_VERSION: '3.20.0'
+
+      - name: Assert parent profile slicing was NOT closed (it has children)
+        run: |
+          echo "Checking ParentProfile slicing rules (should remain 'open' since it has children)..."
+          PARENT_RULES=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/conformance/ParentProfile.json")
+          echo "ParentProfile slicing.rules: $PARENT_RULES"
+          if [ "$PARENT_RULES" = "open" ]; then
+            echo "PASS: ParentProfile slicing correctly remains 'open' (it is extended by ChildProfile)"
+          else
+            echo "FAIL: expected ParentProfile slicing to remain 'open' but got '$PARENT_RULES'"
+            exit 1
+          fi
+
+      - name: Assert child profile slicing WAS closed (it has no children)
+        run: |
+          echo "Checking ChildProfile slicing rules (should be 'closed' since it has no children)..."
+          CHILD_RULES=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/conformance/ChildProfile.json")
+          echo "ChildProfile slicing.rules: $CHILD_RULES"
+          if [ "$CHILD_RULES" = "closed" ]; then
+            echo "PASS: ChildProfile slicing correctly changed to 'closed' (it is not extended by any other profile)"
+          else
+            echo "FAIL: expected ChildProfile slicing to be 'closed' but got '$CHILD_RULES'"
+            exit 1
+          fi

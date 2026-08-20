@@ -1,0 +1,81 @@
+name: Test - Slicing NOT closed when CLOSE_SLICING_FOR_VALIDATION is false
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a package.json with FHIR version info
+      - name: Create package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create a conformance resources directory with a StructureDefinition that has open slicing
+      - name: Create conformance resources with open slicing
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cat > "$GITHUB_WORKSPACE/conformance/TestProfile.json" <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "TestProfile",
+            "url": "http://example.org/fhir/StructureDefinition/TestProfile",
+            "name": "TestProfile",
+            "status": "active",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient.identifier",
+                  "path": "Patient.identifier",
+                  "slicing": {
+                    "discriminator": [{"type": "value", "path": "system"}],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+
+      # Run the action with CLOSE_SLICING_FOR_VALIDATION=false (default)
+      # The pre-processing step should NOT modify the slicing rules
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.10'
+          SUSHI_VERSION: '3.20.0'
+
+      - name: Assert slicing was NOT closed (remains open)
+        run: |
+          echo "Checking that slicing rules were NOT changed (should remain 'open')..."
+          SLICING_RULES=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/conformance/TestProfile.json")
+          echo "slicing.rules: $SLICING_RULES"
+          if [ "$SLICING_RULES" = "open" ]; then
+            echo "PASS: slicing rules correctly remain 'open' when CLOSE_SLICING_FOR_VALIDATION=false"
+          else
+            echo "FAIL: expected slicing rules to remain 'open' but got '$SLICING_RULES'"
+            exit 1
+          fi

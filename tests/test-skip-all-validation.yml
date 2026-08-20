@@ -1,0 +1,47 @@
+name: Test - Skip all validation (both validators disabled)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a minimal package.json with FHIR version info in the workspace root
+      # (needed if any validation is enabled; harmless when disabled)
+      - name: Create package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      # Create a minimal conformance resources directory with a placeholder
+      - name: Create conformance resources directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          # Create a minimal placeholder so the path exists
+          echo '{}' > "$GITHUB_WORKSPACE/conformance/.gitkeep"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.10'
+          SUSHI_VERSION: '3.20.0'
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed. Both validators were disabled, so all validation steps should have been skipped."
+          echo "PASS: action ran without error when both validators are disabled"
