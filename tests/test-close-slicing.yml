@@ -1,0 +1,91 @@
+name: Test - Close slicing pre-processing
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up fixture files with a StructureDefinition that has slicing
+      - name: Set up fixture files with sliced StructureDefinition
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1"
+            }
+          }
+          EOF
+          
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          
+          # Create a StructureDefinition with open slicing
+          cat > "$GITHUB_WORKSPACE/conformance/StructureDefinition-sliced.json" << 'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "sliced-profile",
+            "url": "http://example.org/fhir/StructureDefinition/sliced-profile",
+            "version": "1.0.0",
+            "name": "SlicedProfile",
+            "status": "active",
+            "fhirVersion": "4.0.1",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint",
+            "differential": {
+              "element": [
+                {
+                  "id": "Patient",
+                  "path": "Patient"
+                },
+                {
+                  "id": "Patient.identifier",
+                  "path": "Patient.identifier",
+                  "slicing": {
+                    "discriminator": [
+                      {
+                        "type": "value",
+                        "path": "system"
+                      }
+                    ],
+                    "rules": "open"
+                  }
+                }
+              ]
+            }
+          }
+          EOF
+          
+          echo "Setup complete"
+          echo "Before action - slicing rules:"
+          jq '.differential.element[] | select(.slicing) | .slicing.rules' "$GITHUB_WORKSPACE/conformance/StructureDefinition-sliced.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          CLOSE_SLICING_FOR_VALIDATION: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert slicing was closed
+        run: |
+          echo "After action - checking slicing rules in modified StructureDefinition:"
+          SLICING_RULES=$(jq -r '.differential.element[] | select(.slicing) | .slicing.rules' "$GITHUB_WORKSPACE/conformance/StructureDefinition-sliced.json")
+          echo "slicing rules: $SLICING_RULES"
+          if [ "$SLICING_RULES" = "closed" ]; then
+            echo "PASS: slicing was correctly closed by the action"
+          else
+            echo "FAIL: expected slicing rules to be 'closed' but got '$SLICING_RULES'"
+            exit 1
+          fi

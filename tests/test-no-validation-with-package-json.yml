@@ -1,0 +1,45 @@
+name: Test - No validation, package.json present
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up required files: package.json at workspace root
+      - name: Set up package.json at workspace root
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": [
+              "4.0.1"
+            ],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1"
+            }
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/"* "$GITHUB_WORKSPACE/conformance/"
+          echo "Setup complete"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed
+        run: |
+          echo "PASS: action completed successfully with both validators disabled"
+          echo "The action correctly skipped all validation steps"

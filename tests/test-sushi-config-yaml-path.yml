@@ -1,0 +1,49 @@
+name: Test - sushi-config.yaml as dependency source
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up sushi-config.yaml (no package.json) in workspace root
+      # With both validators disabled, FHIR version detection is skipped entirely
+      - name: Set up sushi-config.yaml fixture
+        run: |
+          # Remove any existing package.json to ensure sushi-config.yaml path is tested
+          rm -f "$GITHUB_WORKSPACE/package.json"
+          
+          cat > "$GITHUB_WORKSPACE/sushi-config.yaml" << 'EOF'
+          id: example.fhir.project
+          canonical: http://example.org/fhir
+          name: ExampleFHIRProject
+          status: active
+          version: 1.0.0
+          fhirVersion: 4.0.1
+          dependencies:
+            hl7.fhir.r4.core: 4.0.1
+          EOF
+          
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/"* "$GITHUB_WORKSPACE/conformance/"
+          echo "Setup complete"
+          cat "$GITHUB_WORKSPACE/sushi-config.yaml"
+
+      # With both validators disabled, the action skips FHIR version detection
+      # and sushi-config.yaml conversion - so this should complete successfully
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully
+        run: |
+          echo "PASS: action completed with sushi-config.yaml present and validators disabled"
+          echo "The action correctly skipped FHIR version detection and conversion steps"

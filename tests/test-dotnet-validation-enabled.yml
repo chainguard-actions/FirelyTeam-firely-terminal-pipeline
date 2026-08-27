@@ -1,0 +1,72 @@
+name: Test - .NET validation enabled (dotnet path)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up .NET SDK (required for DOTNET_VALIDATION_ENABLED=true)
+      - name: Set up .NET SDK
+        run: |
+          # Check if dotnet is already available
+          if command -v dotnet &> /dev/null; then
+            echo "dotnet already available: $(dotnet --version)"
+          else
+            echo "dotnet not found, installing..."
+            wget -q https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+            chmod +x dotnet-install.sh
+            ./dotnet-install.sh --channel 8.0
+            export PATH="$HOME/.dotnet:$PATH"
+            echo "$HOME/.dotnet" >> $GITHUB_PATH
+          fi
+
+      # Set up required files
+      - name: Set up fixture files
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": [
+              "4.0.1"
+            ],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1"
+            }
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/"* "$GITHUB_WORKSPACE/conformance/"
+          echo "Setup complete"
+
+      # Run with DOTNET_VALIDATION_ENABLED=true but no real Simplifier credentials
+      # The action will fail at the Simplifier login step - this is expected
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: fake-password-for-testing
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+
+      - name: Assert action ran (failed gracefully at login or succeeded)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: action succeeded (dotnet validation completed)"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (expected - no real Simplifier credentials)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

@@ -1,0 +1,11 @@
+{
+  "name": "test-fhir-project",
+  "version": "1.0.0",
+  "description": "Test FHIR project for CI",
+  "fhirVersions": [
+    "4.0.1"
+  ],
+  "dependencies": {
+    "hl7.fhir.r4.core": "4.0.1"
+  }
+}

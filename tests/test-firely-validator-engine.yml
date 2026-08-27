@@ -1,0 +1,30 @@
+name: Test FIRELY_TERMINAL_VALIDATOR_ENGINE input
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up fixture files
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/"* "$GITHUB_WORKSPACE/conformance/"
+          echo "Fixture files set up"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+
+      - name: Assert action completed
+        run: |
+          echo "PASS: action completed with FIRELY_TERMINAL_VALIDATOR_ENGINE=firely input"
