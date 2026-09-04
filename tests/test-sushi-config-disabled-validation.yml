@@ -1,0 +1,51 @@
+name: Test - sushi-config.yaml with disabled validation
+on:
+  workflow_dispatch:
+
+jobs:
+  test-sushi-config-disabled-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create sushi-config.yaml fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/sushi-config.yaml" <<'EOF'
+          id: test.fhir.project
+          canonical: http://example.org/fhir
+          name: TestFHIRProject
+          status: active
+          version: 1.0.0
+          fhirVersion: 4.0.1
+          dependencies:
+            hl7.fhir.r4.core: 4.0.1
+          EOF
+
+      - name: Create conformance resources directory
+        run: mkdir -p "$GITHUB_WORKSPACE/conformance"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: fake-password
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.10.4'
+          SUSHI_VERSION: '3.20.1'
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed with outcome: ${{ steps.action.outcome }}"
+          if [ "${{ steps.action.outcome }}" != "success" ]; then
+            echo "FAIL: expected action to succeed when both validators are disabled"
+            exit 1
+          fi
+          echo "PASS: action completed successfully with sushi-config.yaml and both validators disabled"
+
+      - name: Cleanup sushi-config.yaml
+        if: always()
+        run: rm -f "$GITHUB_WORKSPACE/sushi-config.yaml"

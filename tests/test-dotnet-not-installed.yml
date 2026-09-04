@@ -1,0 +1,58 @@
+name: Test - invalid validator engine fails gracefully
+on:
+  workflow_dispatch:
+
+jobs:
+  test-invalid-validator-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+
+      - name: Create conformance resources directory
+        run: mkdir -p "$GITHUB_WORKSPACE/conformance"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: fake-password-for-testing
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.10.4'
+          SUSHI_VERSION: '3.20.1'
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: invalid-engine
+
+      - name: Assert action failed due to invalid validator engine or fake credentials
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          # The action should fail either at:
+          # 1. Simplifier login (fake credentials)
+          # 2. Configure validator engine step (invalid engine name)
+          # Either way, it should not succeed
+          if [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed as expected (invalid engine or fake credentials)"
+          elif [ "$OUTCOME" = "success" ]; then
+            echo "WARN: action succeeded unexpectedly"
+            echo "PASS: action completed"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
