@@ -1,0 +1,36 @@
+name: Test - SUSHI_USE_CONFIG_DEPENDENCIES input accepted (validators disabled)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # With both validators disabled, FHIR version detection is skipped entirely.
+      # The SUSHI_USE_CONFIG_DEPENDENCIES input is accepted but not evaluated.
+      # We do NOT put sushi-config.yaml at workspace root to avoid triggering the
+      # action's yq install step (which requires network access to GitHub).
+      # We put package.json at workspace root (not needed but harmless).
+      - name: Set up package.json at workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+          rm -f "$GITHUB_WORKSPACE/sushi-config.yaml"
+          echo "package.json contents:"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_USE_CONFIG_DEPENDENCIES: true
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed without error"
+          echo "PASS: SUSHI_USE_CONFIG_DEPENDENCIES=true input accepted without error (validators disabled)"

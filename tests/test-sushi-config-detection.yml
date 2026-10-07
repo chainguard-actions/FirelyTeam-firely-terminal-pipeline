@@ -1,0 +1,35 @@
+name: Test - sushi-config.yaml present with validators disabled (action completes)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Copy sushi-config.yaml to workspace root (no package.json).
+      # With both validators disabled, the action skips FHIR version detection entirely.
+      # The action's yq install step is conditional on hashFiles('sushi-config.yaml'),
+      # which may or may not trigger under act. Either way, the action should complete
+      # successfully since no FHIR detection or validation is performed.
+      - name: Set up sushi-config.yaml fixture (no package.json)
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/sushi-config/sushi-config.yaml" "$GITHUB_WORKSPACE/sushi-config.yaml"
+          rm -f "$GITHUB_WORKSPACE/package.json"
+          echo "sushi-config.yaml contents:"
+          cat "$GITHUB_WORKSPACE/sushi-config.yaml"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully with sushi-config.yaml present
+        run: |
+          echo "Action completed without error"
+          echo "PASS: action ran successfully with sushi-config.yaml present and validators disabled"

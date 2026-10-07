@@ -1,0 +1,32 @@
+name: Test - Both validators disabled (action completes without validation)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # With both validators disabled, the action skips FHIR version detection entirely.
+      # No package.json or sushi-config.yaml is needed at workspace root.
+      # Ensure no stray package files exist that could trigger the yq install step.
+      - name: Ensure no package files at workspace root
+        run: |
+          rm -f "$GITHUB_WORKSPACE/package.json"
+          rm -f "$GITHUB_WORKSPACE/sushi-config.yaml"
+          echo "Workspace root is clean of package files"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action completed successfully
+        run: |
+          echo "Action completed without error"
+          echo "PASS: action ran with both validators disabled (no network access required)"
