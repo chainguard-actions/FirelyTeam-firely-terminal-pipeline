@@ -1,0 +1,34 @@
+name: Test - PATH_TO_EXAMPLES and SUSHI_OPTIONS inputs (validators disabled)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up minimal project files
+        run: |
+          cp "$GITHUB_WORKSPACE/hardened/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+          mkdir -p "$GITHUB_WORKSPACE/examples"
+
+      # With both validators and SUSHI disabled, PATH_TO_EXAMPLES and SUSHI_OPTIONS
+      # are accepted as inputs but not acted upon — the action should complete successfully.
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_EXAMPLES: examples
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+          SUSHI_OPTIONS: '--snapshot'
+          SIMPLIFIER_USERNAME: 'test@example.com'
+          SIMPLIFIER_PASSWORD: 'testpassword'
+
+      - name: Assert action completed successfully
+        run: |
+          echo "PASS: action ran through all steps with PATH_TO_EXAMPLES and SUSHI_OPTIONS set"
+          echo "      (both validators and SUSHI disabled so these inputs are accepted but not used)"

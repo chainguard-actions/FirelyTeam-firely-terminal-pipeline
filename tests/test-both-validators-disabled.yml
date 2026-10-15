@@ -1,0 +1,31 @@
+name: Test - Both validators disabled (basic smoke test)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Set up a minimal FHIR project with package.json
+      - name: Set up minimal project files
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+
+      # With both validators disabled, the action should skip all validation steps
+      # and complete successfully without needing real Simplifier credentials.
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+          SIMPLIFIER_USERNAME: 'test@example.com'
+          SIMPLIFIER_PASSWORD: 'testpassword'
+
+      - name: Assert action completed successfully
+        run: |
+          echo "PASS: action ran through all steps with both validators disabled"
