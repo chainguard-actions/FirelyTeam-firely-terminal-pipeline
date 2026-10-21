@@ -1,0 +1,25 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "test-parent",
+  "url": "http://example.org/StructureDefinition/test-parent",
+  "name": "TestParent",
+  "status": "draft",
+  "fhirVersion": "4.0.1",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient.identifier",
+        "path": "Patient.identifier",
+        "slicing": {
+          "discriminator": [{ "type": "value", "path": "system" }],
+          "rules": "open"
+        }
+      }
+    ]
+  }
+}

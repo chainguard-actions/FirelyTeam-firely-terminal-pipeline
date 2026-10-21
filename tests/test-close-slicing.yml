@@ -1,0 +1,51 @@
+name: Test CLOSE_SLICING_FOR_VALIDATION closes leaf profile slicings
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Copy fixtures into a scratch directory
+        run: |
+          rm -rf "$GITHUB_WORKSPACE/slicing-work"
+          mkdir -p "$GITHUB_WORKSPACE/slicing-work"
+          cp "$GITHUB_WORKSPACE"/tests/fixtures/slicing/*.json "$GITHUB_WORKSPACE/slicing-work/"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: slicing-work
+          SIMPLIFIER_USERNAME: dummy@example.com
+          SIMPLIFIER_PASSWORD: dummy-password
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert leaf slicing closed, parent untouched
+        run: |
+          CHILD=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/slicing-work/child.json")
+          PARENT=$(jq -r '.differential.element[0].slicing.rules' "$GITHUB_WORKSPACE/slicing-work/parent.json")
+          GENDER=$(jq -c '.differential.element[1]' "$GITHUB_WORKSPACE/slicing-work/child.json")
+          echo "child rules: $CHILD"
+          echo "parent rules: $PARENT"
+          echo "child non-sliced element: $GENDER"
+          if [ "$CHILD" != "closed" ]; then
+            echo "FAIL: expected child slicing to be closed"
+            exit 1
+          fi
+          if [ "$PARENT" != "open" ]; then
+            echo "FAIL: expected parent (extended) profile slicing to remain open"
+            exit 1
+          fi
+          if echo "$GENDER" | grep -q slicing; then
+            echo "FAIL: non-sliced element should not gain slicing"
+            exit 1
+          fi
+          ls "$GITHUB_WORKSPACE/slicing-work"
+          if ls "$GITHUB_WORKSPACE/slicing-work"/*.tmp >/dev/null 2>&1; then
+            echo "FAIL: temp files left behind"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$GITHUB_WORKSPACE/slicing-work"

@@ -1,0 +1,30 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "test-child",
+  "url": "http://example.org/StructureDefinition/test-child",
+  "name": "TestChild",
+  "status": "draft",
+  "fhirVersion": "4.0.1",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://example.org/StructureDefinition/test-parent",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient.name",
+        "path": "Patient.name",
+        "slicing": {
+          "discriminator": [{ "type": "value", "path": "use" }],
+          "rules": "open"
+        }
+      },
+      {
+        "id": "Patient.gender",
+        "path": "Patient.gender",
+        "min": 1
+      }
+    ]
+  }
+}

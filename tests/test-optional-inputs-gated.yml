@@ -1,0 +1,44 @@
+name: Test optional inputs are ignored when validators and SUSHI are disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/slicing
+          PATH_TO_EXAMPLES: tests/fixtures/slicing
+          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          SUSHI_OPTIONS: --snapshot
+          SIMPLIFIER_USERNAME: dummy@example.com
+          SIMPLIFIER_PASSWORD: dummy-password
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+      - name: Assert action succeeded without side effects
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -f "$GITHUB_WORKSPACE/package.json" ]; then
+            echo "FAIL: package.json should not have been generated"
+            exit 1
+          fi
+          if [ -f "$GITHUB_WORKSPACE/validator_cli.jar" ]; then
+            echo "FAIL: Java validator should not have been downloaded"
+            exit 1
+          fi
+          if [ -d "$GITHUB_WORKSPACE/fsh-generated" ]; then
+            echo "FAIL: SUSHI should not have run"
+            exit 1
+          fi
+          echo "PASS"
