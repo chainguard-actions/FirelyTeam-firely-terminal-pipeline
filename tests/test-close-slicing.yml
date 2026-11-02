@@ -1,0 +1,58 @@
+name: Test close slicing pre-processing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prepare conformance resources
+        run: |
+          rm -rf .slicing-work
+          mkdir -p .slicing-work/nested
+          cat > .slicing-work/parent.json <<'EOF'
+          {"resourceType":"StructureDefinition","url":"http://example.org/SD/parent","baseDefinition":"http://hl7.org/fhir/StructureDefinition/Patient","differential":{"element":[{"id":"Patient.identifier","slicing":{"rules":"open"}}]}}
+          EOF
+          cat > .slicing-work/nested/child.json <<'EOF'
+          {"resourceType":"StructureDefinition","url":"http://example.org/SD/child","baseDefinition":"http://example.org/SD/parent","differential":{"element":[{"id":"Patient.identifier","slicing":{"rules":"open"}},{"id":"Patient.name","min":1}]}}
+          EOF
+          cat > .slicing-work/valueset.json <<'EOF'
+          {"resourceType":"ValueSet","url":"http://example.org/VS/x","differential":{"element":[{"slicing":{"rules":"open"}}]}}
+          EOF
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: .slicing-work
+          SIMPLIFIER_USERNAME: nobody@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert slicing rules
+        run: |
+          PARENT=$(jq -r '.differential.element[0].slicing.rules' .slicing-work/parent.json)
+          CHILD=$(jq -r '.differential.element[0].slicing.rules' .slicing-work/nested/child.json)
+          CHILD_NAME=$(jq -c '.differential.element[1]' .slicing-work/nested/child.json)
+          VS=$(jq -r '.differential.element[0].slicing.rules' .slicing-work/valueset.json)
+          echo "parent: $PARENT child: $CHILD child-name: $CHILD_NAME vs: $VS"
+          if [ "$CHILD" != "closed" ]; then
+            echo "FAIL: leaf profile slicing should be closed"
+            exit 1
+          fi
+          if [ "$PARENT" != "open" ]; then
+            echo "FAIL: parent profile (extended by child) should remain open"
+            exit 1
+          fi
+          if [ "$VS" != "open" ]; then
+            echo "FAIL: non-StructureDefinition resources should not be modified"
+            exit 1
+          fi
+          if [ "$CHILD_NAME" != '{"id":"Patient.name","min":1}' ]; then
+            echo "FAIL: element without slicing should be untouched"
+            exit 1
+          fi
+          if ls .slicing-work/*.tmp .slicing-work/nested/*.tmp >/dev/null 2>&1; then
+            echo "FAIL: leftover .tmp files"
+            exit 1
+          fi
+          echo "PASS"

@@ -1,0 +1,46 @@
+name: Test all validation disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prepare conformance folder
+        run: |
+          mkdir -p .disabled-work
+          cat > .disabled-work/sd.json <<'EOF'
+          {"resourceType":"StructureDefinition","url":"http://example.org/SD/a","differential":{"element":[{"id":"Patient.identifier","slicing":{"rules":"open"}}]}}
+          EOF
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: .disabled-work
+          SIMPLIFIER_USERNAME: nobody@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+      - name: Assert nothing was modified or generated
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          RULES=$(jq -r '.differential.element[0].slicing.rules' .disabled-work/sd.json)
+          echo "rules: $RULES"
+          if [ "$RULES" != "open" ]; then
+            echo "FAIL: slicing should not be modified when CLOSE_SLICING_FOR_VALIDATION is false"
+            exit 1
+          fi
+          if [ -f package.json ]; then
+            echo "FAIL: package.json should not be generated"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not be downloaded"
+            exit 1
+          fi
+          echo "PASS"

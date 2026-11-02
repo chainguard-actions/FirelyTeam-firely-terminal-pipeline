@@ -1,0 +1,60 @@
+name: Test optional inputs accepted with validation disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prepare conformance and example folders
+        run: |
+          mkdir -p .optional-work/conformance .optional-work/examples
+          cat > .optional-work/conformance/sd.json <<'EOF'
+          {"resourceType":"StructureDefinition","url":"http://example.org/SD/opt","differential":{"element":[{"id":"Patient.identifier","slicing":{"rules":"open"}}]}}
+          EOF
+          cat > .optional-work/examples/patient.json <<'EOF'
+          {"resourceType":"Patient","id":"example"}
+          EOF
+          rm -f validator_cli.jar
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: .optional-work/conformance
+          PATH_TO_EXAMPLES: .optional-work/examples
+          PATH_TO_QUALITY_CONTROL_RULES: .optional-work/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          SUSHI_OPTIONS: --log-level debug
+          SIMPLIFIER_USERNAME: nobody@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+      - name: Assert success and no side effects
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          RULES=$(jq -r '.differential.element[0].slicing.rules' .optional-work/conformance/sd.json)
+          echo "rules: $RULES"
+          if [ "$RULES" != "open" ]; then
+            echo "FAIL: slicing should not be modified"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not be downloaded"
+            exit 1
+          fi
+          if [ -d fsh-generated ]; then
+            echo "FAIL: SUSHI should not have run"
+            exit 1
+          fi
+          if [ "$(jq -r '.id' .optional-work/examples/patient.json)" != "example" ]; then
+            echo "FAIL: example file was modified"
+            exit 1
+          fi
+          echo "PASS"
