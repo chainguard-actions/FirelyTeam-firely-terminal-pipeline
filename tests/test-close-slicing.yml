@@ -1,0 +1,43 @@
+name: Test close slicing pre-processing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Copy fixture profiles to a scratch directory
+        run: |
+          rm -rf "$GITHUB_WORKSPACE/slicing-work"
+          mkdir -p "$GITHUB_WORKSPACE/slicing-work"
+          cp tests/fixtures/profiles/*.json "$GITHUB_WORKSPACE/slicing-work/"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: slicing-work
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert slicing rules
+        run: |
+          W="$GITHUB_WORKSPACE/slicing-work"
+          CHILD=$(jq -r '.differential.element[] | select(.id=="Patient.name") | .slicing.rules' "$W/child-profile.json")
+          PARENT=$(jq -r '.differential.element[] | select(.id=="Patient.identifier") | .slicing.rules' "$W/parent-profile.json")
+          GENDER_SLICING=$(jq -r '.differential.element[] | select(.id=="Patient.gender") | .slicing // "none"' "$W/child-profile.json")
+          GENDER_MIN=$(jq -r '.differential.element[] | select(.id=="Patient.gender") | .min' "$W/child-profile.json")
+          EX=$(jq -c '.' "$W/example-patient.json")
+          echo "child rules: $CHILD"
+          echo "parent rules: $PARENT"
+          echo "gender slicing: $GENDER_SLICING min: $GENDER_MIN"
+          echo "example: $EX"
+          if [ "$CHILD" != "closed" ]; then echo "FAIL: leaf profile slicing should be closed"; exit 1; fi
+          if [ "$PARENT" != "open" ]; then echo "FAIL: extended parent profile slicing should stay open"; exit 1; fi
+          if [ "$GENDER_SLICING" != "none" ] || [ "$GENDER_MIN" != "1" ]; then echo "FAIL: non-sliced element altered"; exit 1; fi
+          if [ "$EX" != '{"resourceType":"Patient","id":"example","gender":"female"}' ]; then echo "FAIL: non-SD resource altered"; exit 1; fi
+          if ls "$W"/*.tmp >/dev/null 2>&1; then echo "FAIL: leftover tmp files"; exit 1; fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -rf "$GITHUB_WORKSPACE/slicing-work"

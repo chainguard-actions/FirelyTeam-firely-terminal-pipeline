@@ -1,0 +1,30 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "child-patient",
+  "url": "http://example.org/fhir/StructureDefinition/child-patient",
+  "name": "ChildPatient",
+  "status": "draft",
+  "fhirVersion": "4.0.1",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://example.org/fhir/StructureDefinition/parent-patient",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient.name",
+        "path": "Patient.name",
+        "slicing": {
+          "discriminator": [{ "type": "value", "path": "use" }],
+          "rules": "open"
+        }
+      },
+      {
+        "id": "Patient.gender",
+        "path": "Patient.gender",
+        "min": 1
+      }
+    ]
+  }
+}
