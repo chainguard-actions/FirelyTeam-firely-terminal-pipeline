@@ -1,0 +1,74 @@
+name: Test .NET expected fails (mocked dotnet/fhir)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prepare project files
+        run: |
+          rm -f sushi-config.yaml
+          cat > package.json <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "fhirVersions": ["5.0.0"],
+            "dependencies": { "hl7.fhir.r5.core": "5.0.0" }
+          }
+          EOF
+      - name: Install fake dotnet and fhir
+        run: |
+          BIN="$RUNNER_TEMP/fakebin"
+          mkdir -p "$BIN"
+          LOG="$RUNNER_TEMP/fhir-args.log"
+          : > "$LOG"
+          cat > "$BIN/dotnet" <<EOF
+          #!/bin/bash
+          echo "dotnet \$*" >> "$LOG"
+          if [ "\$1" = "--version" ]; then echo "8.0.100"; fi
+          exit 0
+          EOF
+          cat > "$BIN/fhir" <<EOF
+          #!/bin/bash
+          echo "fhir \$*" >> "$LOG"
+          case "\$1" in
+            -v) echo "Firely Terminal 4.0.0" ;;
+            restore) echo "Restored hl7.fhir.r5.core@5.0.0" ;;
+          esac
+          exit 0
+          EOF
+          chmod +x "$BIN"/*
+          echo "$BIN" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-test/conformance
+          SIMPLIFIER_USERNAME: user@example.com
+          SIMPLIFIER_PASSWORD: secret
+          DOTNET_VALIDATION_ENABLED: 'true'
+          JAVA_VALIDATION_ENABLED: 'false'
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
+      - name: Assert fhir CLI calls
+        run: |
+          LOG="$RUNNER_TEMP/fhir-args.log"
+          cat "$LOG"
+          for s in "fhir spec R5" "fhir restore"; do
+            grep -qxF -- "$s" "$LOG" || { echo "FAIL: missing call '$s'"; exit 1; }
+          done
+          if ! grep -qE '^fhir check *$' "$LOG"; then
+            echo "FAIL: expected 'fhir check' without --fail"
+            exit 1
+          fi
+          if grep -q -- "--fail" "$LOG"; then
+            echo "FAIL: --fail must not be used when VALIDATION_CONFORMANCE_DOTNET is expected to fail"
+            exit 1
+          fi
+          if grep -q "fhir config validator" "$LOG"; then
+            echo "FAIL: validator engine must not be configured when not specified"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json

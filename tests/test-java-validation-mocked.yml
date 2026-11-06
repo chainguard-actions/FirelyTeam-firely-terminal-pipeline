@@ -1,0 +1,118 @@
+name: Test Java validation (mocked java/downloader)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prepare project files
+        run: |
+          rm -rf fhir-test validator_cli.jar sushi-config.yaml
+          mkdir -p fhir-test/conformance fhir-test/examples
+          echo '{"resourceType":"StructureDefinition","url":"http://example.org/sd"}' > fhir-test/conformance/sd.json
+          echo '{"resourceType":"Patient","id":"p1"}' > fhir-test/examples/patient.json
+          cat > package.json <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1",
+              "de.basisprofil.r4": "1.4.0"
+            }
+          }
+          EOF
+      - name: Install fake java, wget and curl
+        run: |
+          BIN="$RUNNER_TEMP/fakebin"
+          mkdir -p "$BIN"
+          JAVA_LOG="$RUNNER_TEMP/java-args.log"
+          DL_LOG="$RUNNER_TEMP/download.log"
+          : > "$JAVA_LOG"; : > "$DL_LOG"
+          cat > "$BIN/java" <<EOF
+          #!/bin/bash
+          if [ "\$1" = "-version" ]; then echo 'openjdk version "17.0.9" 2023-10-17' >&2; exit 0; fi
+          echo "\$*" >> "$JAVA_LOG"
+          echo "Success: 0 errors, 0 warnings, 1 notes"
+          echo "  Information - All OK"
+          EOF
+          for tool in wget curl; do
+            REAL="$(command -v $tool || echo /usr/bin/$tool)"
+            cat > "$BIN/$tool" <<EOF
+          #!/bin/bash
+          out=""; prev=""
+          for a in "\$@"; do
+            case "\$prev" in -O|-o|--output|--output-document) out="\$a" ;; esac
+            prev="\$a"
+          done
+          case "\$*" in
+            *validator_cli.jar*)
+              echo "\$*" >> "$DL_LOG"
+              if [ -n "\$out" ]; then echo fake-jar > "\$out"; else echo fake-jar; fi
+              exit 0 ;;
+          esac
+          exec "$REAL" "\$@"
+          EOF
+          done
+          chmod +x "$BIN"/*
+          echo "$BIN" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-test/conformance
+          PATH_TO_EXAMPLES: fhir-test/examples
+          SIMPLIFIER_USERNAME: user@example.com
+          SIMPLIFIER_PASSWORD: secret
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+          JAVA_VALIDATOR_VERSION: '6.5.0'
+      - name: Assert FHIR version detected
+        run: |
+          echo "FHIR_VERSION: ${FHIR_VERSION:-}"
+          if [ "${FHIR_VERSION:-}" != "4.0.1" ]; then
+            echo "FAIL: expected FHIR_VERSION=4.0.1"
+            exit 1
+          fi
+          if [ "${USE_PACKAGE_JSON:-}" != "true" ] || [ "${NEED_SUSHI_CONVERSION:-}" != "false" ]; then
+            echo "FAIL: expected package.json strategy (USE_PACKAGE_JSON=${USE_PACKAGE_JSON:-}, NEED_SUSHI_CONVERSION=${NEED_SUSHI_CONVERSION:-})"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert validator download
+        run: |
+          cat "$RUNNER_TEMP/download.log"
+          if ! grep -q "6.5.0/validator_cli.jar" "$RUNNER_TEMP/download.log"; then
+            echo "FAIL: validator not downloaded from versioned URL"
+            exit 1
+          fi
+          if [ ! -f validator_cli.jar ]; then
+            echo "FAIL: validator_cli.jar missing"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert java validator invocations
+        run: |
+          LOG="$RUNNER_TEMP/java-args.log"
+          cat "$LOG"
+          LINES=$(wc -l < "$LOG")
+          if [ "$LINES" -ne 2 ]; then
+            echo "FAIL: expected 2 java invocations (conformance + examples), got $LINES"
+            exit 1
+          fi
+          CONF=$(sed -n 1p "$LOG")
+          EX=$(sed -n 2p "$LOG")
+          for s in "-jar validator_cli.jar" "fhir-test/conformance/" "-version 4.0.1" "-output-style compact" "-ig de.basisprofil.r4#1.4.0" "-ig $GITHUB_WORKSPACE/fhir-test/conformance"; do
+            echo "$CONF" | grep -qF -- "$s" || { echo "FAIL: conformance call missing '$s'"; exit 1; }
+          done
+          for s in "fhir-test/examples/" "-version 4.0.1" "-ig de.basisprofil.r4#1.4.0" "-ig $GITHUB_WORKSPACE/fhir-test/conformance"; do
+            echo "$EX" | grep -qF -- "$s" || { echo "FAIL: examples call missing '$s'"; exit 1; }
+          done
+          if grep -qF "hl7.fhir.r4.core" "$LOG"; then
+            echo "FAIL: core package should be filtered out of -ig dependencies"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -rf fhir-test package.json validator_cli.jar

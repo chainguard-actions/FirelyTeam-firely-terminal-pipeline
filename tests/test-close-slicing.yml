@@ -1,0 +1,79 @@
+name: Test close slicing pre-processing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create StructureDefinitions
+        run: |
+          rm -rf fhir-test
+          mkdir -p fhir-test/conformance
+          cat > fhir-test/conformance/parent.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/parent",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "differential": {
+              "element": [
+                { "id": "Patient.identifier", "path": "Patient.identifier",
+                  "slicing": { "discriminator": [{ "type": "value", "path": "system" }], "rules": "open" } }
+              ]
+            }
+          }
+          EOF
+          cat > fhir-test/conformance/child.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/child",
+            "baseDefinition": "http://example.org/StructureDefinition/parent",
+            "differential": {
+              "element": [
+                { "id": "Patient.identifier", "path": "Patient.identifier",
+                  "slicing": { "discriminator": [{ "type": "value", "path": "system" }], "rules": "open" } },
+                { "id": "Patient.name", "path": "Patient.name", "min": 1 }
+              ]
+            }
+          }
+          EOF
+          cat > fhir-test/conformance/patient-example.json <<'EOF'
+          { "resourceType": "Patient", "id": "p1" }
+          EOF
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-test/conformance
+          SIMPLIFIER_USERNAME: user@example.com
+          SIMPLIFIER_PASSWORD: secret
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert slicing rules
+        run: |
+          CHILD=$(jq -r '.differential.element[0].slicing.rules' fhir-test/conformance/child.json)
+          PARENT=$(jq -r '.differential.element[0].slicing.rules' fhir-test/conformance/parent.json)
+          NAME_SLICING=$(jq -r '.differential.element[1].slicing // "none"' fhir-test/conformance/child.json)
+          PATIENT=$(jq -c '.' fhir-test/conformance/patient-example.json)
+          echo "child: $CHILD, parent: $PARENT, name slicing: $NAME_SLICING, patient: $PATIENT"
+          if [ "$CHILD" != "closed" ]; then
+            echo "FAIL: leaf profile slicing should be closed"
+            exit 1
+          fi
+          if [ "$PARENT" != "open" ]; then
+            echo "FAIL: parent profile (extended by child) should stay open"
+            exit 1
+          fi
+          if [ "$NAME_SLICING" != "none" ]; then
+            echo "FAIL: elements without slicing must not get one"
+            exit 1
+          fi
+          if [ "$PATIENT" != '{"resourceType":"Patient","id":"p1"}' ]; then
+            echo "FAIL: non-StructureDefinition resource was modified"
+            exit 1
+          fi
+          ls fhir-test/conformance/*.tmp 2>/dev/null && { echo "FAIL: leftover tmp files"; exit 1; }
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -rf fhir-test

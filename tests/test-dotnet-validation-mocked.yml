@@ -1,0 +1,70 @@
+name: Test .NET validation (mocked dotnet/fhir)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prepare project files
+        run: |
+          rm -f sushi-config.yaml
+          cat > package.json <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": { "hl7.fhir.r4.core": "4.0.1" }
+          }
+          EOF
+      - name: Install fake dotnet and fhir
+        run: |
+          BIN="$RUNNER_TEMP/fakebin"
+          mkdir -p "$BIN"
+          LOG="$RUNNER_TEMP/fhir-args.log"
+          : > "$LOG"
+          cat > "$BIN/dotnet" <<EOF
+          #!/bin/bash
+          echo "dotnet \$*" >> "$LOG"
+          if [ "\$1" = "--version" ]; then echo "8.0.100"; fi
+          exit 0
+          EOF
+          cat > "$BIN/fhir" <<EOF
+          #!/bin/bash
+          echo "fhir \$*" >> "$LOG"
+          case "\$1" in
+            -v) echo "Firely Terminal 4.0.0" ;;
+            restore) echo "Restored hl7.fhir.r4.core@4.0.1" ;;
+            cache) echo "$RUNNER_TEMP/fhircache" ;;
+          esac
+          exit 0
+          EOF
+          chmod +x "$BIN"/*
+          echo "$BIN" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-test/conformance
+          PATH_TO_QUALITY_CONTROL_RULES: myrules
+          SIMPLIFIER_USERNAME: user@example.com
+          SIMPLIFIER_PASSWORD: secret
+          DOTNET_VALIDATION_ENABLED: 'true'
+          JAVA_VALIDATION_ENABLED: 'false'
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+      - name: Assert fhir CLI calls
+        run: |
+          LOG="$RUNNER_TEMP/fhir-args.log"
+          cat "$LOG"
+          for s in "dotnet --version" "fhir -v" "fhir login email=user@example.com password=secret" "fhir spec R4" "fhir config regenerate on" "fhir restore" "fhir config validator firely" "fhir check --fail myrules"; do
+            grep -qxF -- "$s" "$LOG" || { echo "FAIL: missing call '$s'"; exit 1; }
+          done
+          if grep -q "dotnet tool install" "$LOG"; then
+            echo "FAIL: Firely.Terminal should not be installed when fhir is already on PATH"
+            exit 1
+          fi
+          echo "FHIR_VERSION: ${FHIR_VERSION:-}"
+          [ "${FHIR_VERSION:-}" = "4.0.1" ] || { echo "FAIL: expected FHIR_VERSION=4.0.1"; exit 1; }
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json

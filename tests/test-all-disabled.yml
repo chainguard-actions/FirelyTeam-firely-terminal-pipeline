@@ -1,0 +1,38 @@
+name: Test all validation disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure clean workspace
+        run: rm -f package.json validator_cli.jar
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-test/conformance
+          SIMPLIFIER_USERNAME: user@example.com
+          SIMPLIFIER_PASSWORD: secret
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'false'
+      - name: Assert nothing was done
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "FHIR_VERSION: '${FHIR_VERSION:-}'"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -n "${FHIR_VERSION:-}" ]; then
+            echo "FAIL: FHIR_VERSION should not be set when validation is disabled"
+            exit 1
+          fi
+          if [ -f package.json ] || [ -f validator_cli.jar ]; then
+            echo "FAIL: unexpected files were created"
+            exit 1
+          fi
+          echo "PASS"
