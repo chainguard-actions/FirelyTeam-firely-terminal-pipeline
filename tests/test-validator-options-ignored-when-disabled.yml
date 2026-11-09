@@ -1,0 +1,58 @@
+name: Test - Validator/QC/SUSHI options ignored when validators and SUSHI disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create test package.json and resources
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "description": "Test FHIR project",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+          sha256sum "$GITHUB_WORKSPACE/package.json" | cut -d' ' -f1 > /tmp/pkg-before.sha
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          SUSHI_OPTIONS: --log-level debug
+
+      - name: Assert action succeeded and did not modify package.json
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          before="$(cat /tmp/pkg-before.sha)"
+          after="$(sha256sum "$GITHUB_WORKSPACE/package.json" | cut -d' ' -f1)"
+          if [ "$before" != "$after" ]; then
+            echo "FAIL: package.json was modified"
+            exit 1
+          fi
+          if [ -f "$GITHUB_WORKSPACE/validator_cli.jar" ]; then
+            echo "FAIL: Java validator downloaded though disabled"
+            exit 1
+          fi
+          echo "PASS"
