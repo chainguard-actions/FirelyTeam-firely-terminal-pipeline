@@ -1,0 +1,78 @@
+name: Test - .NET validation path with mocked fhir CLI (expected fails, engine, QC rules)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mock dotnet and fhir CLIs
+        run: |
+          MOCKBIN="$RUNNER_TEMP/mockbin"
+          mkdir -p "$MOCKBIN"
+          cat > "$MOCKBIN/dotnet" <<'EOF'
+          #!/bin/sh
+          echo "dotnet $*" >> "$RUNNER_TEMP/calls.log"
+          if [ "$1" = "--version" ]; then echo "8.0.100"; fi
+          exit 0
+          EOF
+          cat > "$MOCKBIN/fhir" <<'EOF'
+          #!/bin/sh
+          echo "fhir $*" >> "$RUNNER_TEMP/calls.log"
+          case "$1" in
+            -v) echo "Firely Terminal 3.5.0 (mock)" ;;
+            restore) echo "Restored 0 packages" ;;
+          esac
+          exit 0
+          EOF
+          chmod +x "$MOCKBIN/dotnet" "$MOCKBIN/fhir"
+          : > "$RUNNER_TEMP/calls.log"
+          echo "$MOCKBIN" >> "$GITHUB_PATH"
+
+      - name: Create package.json and resource directories
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/conformance" "$GITHUB_WORKSPACE/examples" "$GITHUB_WORKSPACE/qc"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_EXAMPLES: examples
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          SUSHI_ENABLED: false
+          SUSHI_OPTIONS: --log-level debug
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.10'
+          SUSHI_VERSION: '3.20.0'
+
+      - name: Assert fhir CLI was invoked as expected
+        run: |
+          echo "--- calls.log ---"
+          cat "$RUNNER_TEMP/calls.log"
+          LOG="$RUNNER_TEMP/calls.log"
+          fail=0
+          grep -qx "fhir login email=test@example.com password=test-password" "$LOG" || { echo "FAIL: login not called correctly"; fail=1; }
+          grep -qx "fhir spec R4" "$LOG" || { echo "FAIL: 'fhir spec R4' not called"; fail=1; }
+          grep -qx "fhir restore" "$LOG" || { echo "FAIL: 'fhir restore' not called"; fail=1; }
+          grep -qx "fhir config validator netsdk" "$LOG" || { echo "FAIL: validator engine not configured to netsdk"; fail=1; }
+          grep -qx "fhir check qc/custom" "$LOG" || { echo "FAIL: expected 'fhir check qc/custom' (no --fail due to EXPECTED_FAILS)"; fail=1; }
+          if grep -q "fhir check --fail" "$LOG"; then echo "FAIL: --fail should not be passed when VALIDATION_CONFORMANCE_DOTNET is expected to fail"; fail=1; fi
+          if grep -q "dotnet tool install" "$LOG"; then echo "FAIL: fhir already on PATH, install should be skipped"; fail=1; fi
+          [ "$fail" -eq 0 ] || exit 1
+          echo "PASS"

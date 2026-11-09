@@ -1,0 +1,78 @@
+name: Test - Invalid Firely Terminal validator engine fails
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mock dotnet and fhir CLIs
+        run: |
+          MOCKBIN="$RUNNER_TEMP/mockbin"
+          mkdir -p "$MOCKBIN"
+          cat > "$MOCKBIN/dotnet" <<'EOF'
+          #!/bin/sh
+          echo "dotnet $*" >> "$RUNNER_TEMP/calls.log"
+          if [ "$1" = "--version" ]; then echo "8.0.100"; fi
+          exit 0
+          EOF
+          cat > "$MOCKBIN/fhir" <<'EOF'
+          #!/bin/sh
+          echo "fhir $*" >> "$RUNNER_TEMP/calls.log"
+          case "$1" in
+            -v) echo "Firely Terminal 3.5.0 (mock)" ;;
+            restore) echo "Restored 0 packages" ;;
+          esac
+          exit 0
+          EOF
+          chmod +x "$MOCKBIN/dotnet" "$MOCKBIN/fhir"
+          : > "$RUNNER_TEMP/calls.log"
+          echo "$MOCKBIN" >> "$GITHUB_PATH"
+
+      - name: Create package.json and conformance directory
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/conformance"
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: bogus-engine
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+          FIRELY_TERMINAL_VERSION: '3.5.0'
+          JAVA_VALIDATOR_VERSION: '6.9.10'
+          SUSHI_VERSION: '3.20.0'
+
+      - name: Assert action failed on invalid engine before QC checks
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          cat "$RUNNER_TEMP/calls.log"
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "FAIL: expected action to fail with invalid validator engine"
+            exit 1
+          fi
+          if grep -q "fhir config validator" "$RUNNER_TEMP/calls.log"; then
+            echo "FAIL: invalid engine should not be passed to fhir config validator"
+            exit 1
+          fi
+          if grep -q "fhir check" "$RUNNER_TEMP/calls.log"; then
+            echo "FAIL: QC checks should not run after engine validation failure"
+            exit 1
+          fi
+          echo "PASS"
