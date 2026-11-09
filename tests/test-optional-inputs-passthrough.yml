@@ -1,0 +1,57 @@
+name: Test - Optional inputs accepted when validators disabled
+# Passes EXPECTED_FAILS, FIRELY_TERMINAL_VALIDATOR_ENGINE, PATH_TO_EXAMPLES,
+# PATH_TO_QUALITY_CONTROL_RULES and SUSHI_OPTIONS with all validators and SUSHI
+# disabled. The action must accept them and finish without touching the
+# conformance/example files.
+on:
+  workflow_dispatch:
+
+jobs:
+  test-optional-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up fixture files
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          mkdir -p "$GITHUB_WORKSPACE/conformance" "$GITHUB_WORKSPACE/examples"
+          cp "$GITHUB_WORKSPACE/tests/fixtures/conformance/StructureDefinition-example.json" \
+             "$GITHUB_WORKSPACE/conformance/"
+          echo '{"resourceType":"Patient","id":"ex1"}' > "$GITHUB_WORKSPACE/examples/Patient-ex1.json"
+          sha256sum conformance/*.json examples/*.json > /tmp/before.sha
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_EXAMPLES: examples
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          SUSHI_OPTIONS: "--snapshot"
+          DOTNET_VALIDATION_ENABLED: "false"
+          JAVA_VALIDATION_ENABLED: "false"
+          SUSHI_ENABLED: "false"
+          CLOSE_SLICING_FOR_VALIDATION: "false"
+          SIMPLIFIER_USERNAME: "test@example.com"
+          SIMPLIFIER_PASSWORD: "test-password"
+
+      - name: Assert action succeeded and files untouched
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! sha256sum -c /tmp/before.sha; then
+            echo "FAIL: conformance/example files were modified"
+            exit 1
+          fi
+          if [ -f "$GITHUB_WORKSPACE/validator_cli.jar" ]; then
+            echo "FAIL: Java validator should not be downloaded when disabled"
+            exit 1
+          fi
+          echo "PASS"
