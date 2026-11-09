@@ -1,0 +1,76 @@
+name: Test - Optional inputs accepted when validators and SUSHI disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json, conformance and example resources
+        run: |
+          mkdir -p tests/fixtures/opt-conformance tests/fixtures/opt-examples
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          cat > tests/fixtures/opt-conformance/StructureDefinition-example.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "id": "example",
+            "url": "http://example.org/fhir/StructureDefinition/example",
+            "name": "Example",
+            "status": "draft",
+            "kind": "resource",
+            "abstract": false,
+            "type": "Patient",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "derivation": "constraint"
+          }
+          EOF
+          cat > tests/fixtures/opt-examples/Patient-example.json <<'EOF'
+          {
+            "resourceType": "Patient",
+            "id": "example"
+          }
+          EOF
+          sha256sum package.json tests/fixtures/opt-conformance/StructureDefinition-example.json > /tmp/before.sha
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/opt-conformance
+          PATH_TO_EXAMPLES: tests/fixtures/opt-examples
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          SUSHI_OPTIONS: --log-level debug
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert action succeeded and did not modify inputs
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! sha256sum -c /tmp/before.sha; then
+            echo "FAIL: package.json or conformance resources were modified"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not have been downloaded"
+            exit 1
+          fi
+          echo "PASS"
