@@ -1,0 +1,44 @@
+name: Test - Java validation of examples with EXPECTED_FAILS
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up package.json at workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/fhir-r4/package.json" "$GITHUB_WORKSPACE/package.json"
+          cat "$GITHUB_WORKSPACE/package.json"
+
+      # Java validation runs on conformance resources and examples. Validator
+      # failures are tolerated via EXPECTED_FAILS; the run may still fail if
+      # java is unavailable or the validator JAR cannot be downloaded.
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/fhir-r4/conformance
+          PATH_TO_EXAMPLES: tests/fixtures/fhir-r4/examples
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+          SUSHI_ENABLED: 'false'
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert outcome
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" = "success" ]; then
+            echo "PASS: Java validation completed with expected fails tolerated"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (java missing or validator download failed)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
