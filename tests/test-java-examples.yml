@@ -1,0 +1,86 @@
+name: Test - Java validation of examples (mocked java validator)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mock java and wget
+        run: |
+          MOCK="$RUNNER_TEMP/mockbin"
+          mkdir -p "$MOCK"
+          LOG="$RUNNER_TEMP/java-calls.log"
+          : > "$LOG"
+          cat > "$MOCK/java" << EOF
+          #!/bin/sh
+          if [ "\$1" = "-version" ]; then
+            echo 'openjdk version "17.0.0" 2021-09-14' >&2
+            exit 0
+          fi
+          echo "java \$*" >> "$LOG"
+          echo "Validating (mock) - All OK"
+          exit 0
+          EOF
+          cat > "$MOCK/wget" << EOF
+          #!/bin/sh
+          echo "wget \$*" >> "$LOG"
+          out=""
+          prev=""
+          for a in "\$@"; do
+            case "\$prev" in -O) out="\$a" ;; esac
+            prev="\$a"
+          done
+          [ -n "\$out" ] && echo "fake jar" > "\$out"
+          exit 0
+          EOF
+          chmod +x "$MOCK/java" "$MOCK/wget"
+          echo "$MOCK" >> "$GITHUB_PATH"
+
+      - name: Create package.json, resources and examples
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1",
+              "de.basisprofil.r4": "1.4.0"
+            }
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/resources" "$GITHUB_WORKSPACE/examples"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          PATH_TO_EXAMPLES: examples
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: true
+          JAVA_VALIDATOR_VERSION: 6.9.6
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert java validator calls
+        run: |
+          LOG="$RUNNER_TEMP/java-calls.log"
+          echo "--- calls ---"
+          cat "$LOG"
+          fail=0
+          grep -qF "wget -q https://github.com/hapifhir/org.hl7.fhir.core/releases/download/6.9.6/validator_cli.jar -O validator_cli.jar" "$LOG" \
+            || { echo "FAIL: validator download URL not substituted"; fail=1; }
+          EX_LINE="$(grep -F "$GITHUB_WORKSPACE/examples/" "$LOG" || true)"
+          echo "examples call: $EX_LINE"
+          [ -n "$EX_LINE" ] || { echo "FAIL: examples not validated"; fail=1; }
+          echo "$EX_LINE" | grep -qF -- "-version 4.0.1" || { echo "FAIL: -version 4.0.1 missing"; fail=1; }
+          echo "$EX_LINE" | grep -qF -- "-ig de.basisprofil.r4#1.4.0" || { echo "FAIL: dependency ig missing"; fail=1; }
+          echo "$EX_LINE" | grep -qF -- "-ig $GITHUB_WORKSPACE/resources" || { echo "FAIL: conformance ig missing"; fail=1; }
+          if echo "$EX_LINE" | grep -qF "hl7.fhir.r4.core"; then echo "FAIL: core package not filtered"; fail=1; fi
+          grep -qF "$GITHUB_WORKSPACE/resources/" "$LOG" || { echo "FAIL: conformance not validated"; fail=1; }
+          [ "$fail" -eq 0 ] || exit 1
+          echo "PASS"

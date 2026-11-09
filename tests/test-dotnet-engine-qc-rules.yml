@@ -1,0 +1,69 @@
+name: Test - .NET validator engine and custom QC rules (mocked Firely Terminal)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mock dotnet and fhir CLIs
+        run: |
+          MOCK="$RUNNER_TEMP/mockbin"
+          mkdir -p "$MOCK"
+          LOG="$RUNNER_TEMP/fhir-calls.log"
+          : > "$LOG"
+          cat > "$MOCK/dotnet" << 'EOF'
+          #!/bin/sh
+          echo "8.0.100"
+          EOF
+          cat > "$MOCK/fhir" << EOF
+          #!/bin/sh
+          echo "\$*" >> "$LOG"
+          case "\$1" in
+            -v) echo "Firely Terminal 3.5.0 (mock)" ;;
+            restore) echo "Restored packages (mock)" ;;
+          esac
+          exit 0
+          EOF
+          chmod +x "$MOCK/dotnet" "$MOCK/fhir"
+          echo "$MOCK" >> "$GITHUB_PATH"
+
+      - name: Create package.json and resources
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          DOTNET_VALIDATION_ENABLED: true
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert fhir calls
+        run: |
+          LOG="$RUNNER_TEMP/fhir-calls.log"
+          echo "--- fhir calls ---"
+          cat "$LOG"
+          fail=0
+          grep -qx "login email=test@example.com password=test-password" "$LOG" || { echo "FAIL: login call missing"; fail=1; }
+          grep -qx "spec R4" "$LOG" || { echo "FAIL: 'spec R4' missing"; fail=1; }
+          grep -qx "restore" "$LOG" || { echo "FAIL: restore missing"; fail=1; }
+          grep -qx "config validator netsdk" "$LOG" || { echo "FAIL: validator engine not configured"; fail=1; }
+          grep -qx "check --fail qc/custom" "$LOG" || { echo "FAIL: QC check with custom rules missing"; fail=1; }
+          [ "$fail" -eq 0 ] || exit 1
+          echo "PASS"

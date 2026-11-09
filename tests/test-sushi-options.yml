@@ -1,0 +1,57 @@
+name: Test - SUSHI options passed through (mocked sushi)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install mock npm, sudo and sushi
+        run: |
+          MOCK="$RUNNER_TEMP/mockbin"
+          mkdir -p "$MOCK"
+          LOG="$RUNNER_TEMP/sushi-calls.log"
+          : > "$LOG"
+          cat > "$MOCK/npm" << 'EOF'
+          #!/bin/sh
+          echo "10.0.0"
+          EOF
+          cat > "$MOCK/sudo" << EOF
+          #!/bin/sh
+          echo "sudo \$*" >> "$LOG"
+          exit 0
+          EOF
+          cat > "$MOCK/sushi" << EOF
+          #!/bin/sh
+          echo "sushi \$*" >> "$LOG"
+          exit 0
+          EOF
+          chmod +x "$MOCK/npm" "$MOCK/sudo" "$MOCK/sushi"
+          echo "$MOCK" >> "$GITHUB_PATH"
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: true
+          SUSHI_VERSION: 3.18.1
+          SUSHI_OPTIONS: . -s
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert sushi invoked with options
+        run: |
+          LOG="$RUNNER_TEMP/sushi-calls.log"
+          echo "--- calls ---"
+          cat "$LOG"
+          fail=0
+          grep -qx "sudo npm install -g fsh-sushi@3.18.1" "$LOG" || { echo "FAIL: sushi install missing"; fail=1; }
+          grep -qx "sushi -v" "$LOG" || { echo "FAIL: sushi -v missing"; fail=1; }
+          grep -qx "sushi . -s" "$LOG" || { echo "FAIL: sushi not invoked with '. -s'"; fail=1; }
+          [ "$fail" -eq 0 ] || exit 1
+          echo "PASS"
