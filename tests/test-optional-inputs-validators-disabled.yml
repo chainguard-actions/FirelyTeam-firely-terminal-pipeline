@@ -1,0 +1,58 @@
+name: Test - Optional inputs accepted with validators disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create fixtures
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          mkdir -p conformance examples qc
+          cat > examples/patient-example.json << 'EOF'
+          {"resourceType": "Patient", "id": "example"}
+          EOF
+          cp examples/patient-example.json /tmp/patient-example.orig.json
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: conformance
+          PATH_TO_EXAMPLES: examples
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: firely
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: dummy@example.com
+          SIMPLIFIER_PASSWORD: dummy-password
+
+      - name: Assert action succeeded and did not touch examples or download validator
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! cmp -s examples/patient-example.json /tmp/patient-example.orig.json; then
+            echo "FAIL: example file was modified"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not be downloaded when Java validation is disabled"
+            exit 1
+          fi
+          echo "PASS"
