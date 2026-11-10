@@ -1,0 +1,65 @@
+name: Test closing slicing in leaf profiles
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create conformance resources
+        run: |
+          D="$RUNNER_TEMP/slicing-resources"
+          rm -rf "$D"; mkdir -p "$D"
+          cat > "$D/parent.json" <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/parent",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "differential": { "element": [
+              { "id": "Patient.identifier", "path": "Patient.identifier",
+                "slicing": { "discriminator": [ { "type": "value", "path": "system" } ], "rules": "open" } }
+            ] }
+          }
+          EOF
+          cat > "$D/child.json" <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/child",
+            "baseDefinition": "http://example.org/StructureDefinition/parent",
+            "differential": { "element": [
+              { "id": "Patient.name", "path": "Patient.name",
+                "slicing": { "discriminator": [ { "type": "value", "path": "use" } ], "rules": "open" } },
+              { "id": "Patient.gender", "path": "Patient.gender" }
+            ] }
+          }
+          EOF
+          cat > "$D/valueset.json" <<'EOF'
+          {
+            "resourceType": "ValueSet",
+            "url": "http://example.org/ValueSet/vs",
+            "differential": { "element": [ { "slicing": { "rules": "open" } } ] }
+          }
+          EOF
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: ${{ runner.temp }}/slicing-resources
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert slicing closed only in leaf StructureDefinitions
+        run: |
+          D="$RUNNER_TEMP/slicing-resources"
+          CHILD=$(jq -r '.differential.element[0].slicing.rules' "$D/child.json")
+          CHILD_NOSLICE=$(jq -r '.differential.element[1].slicing // "none"' "$D/child.json")
+          PARENT=$(jq -r '.differential.element[0].slicing.rules' "$D/parent.json")
+          VS=$(jq -r '.differential.element[0].slicing.rules' "$D/valueset.json")
+          echo "child: $CHILD, child-noslice: $CHILD_NOSLICE, parent: $PARENT, valueset: $VS"
+          if [ "$CHILD" != "closed" ]; then echo "FAIL: child slicing should be closed"; exit 1; fi
+          if [ "$CHILD_NOSLICE" != "none" ]; then echo "FAIL: element without slicing should be untouched"; exit 1; fi
+          if [ "$PARENT" != "open" ]; then echo "FAIL: parent (extended) profile should stay open"; exit 1; fi
+          if [ "$VS" != "open" ]; then echo "FAIL: non-StructureDefinition should be untouched"; exit 1; fi
+          if ls "$D"/*.tmp >/dev/null 2>&1; then echo "FAIL: leftover tmp files"; exit 1; fi
+          echo "PASS"
