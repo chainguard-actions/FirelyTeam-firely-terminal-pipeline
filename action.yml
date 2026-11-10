@@ -416,7 +416,7 @@ runs:
     - name: Restore FHIR package cache
       id: fhir-package-cache-restore
       if: steps.fhir-package-cache.outputs.key != ''
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      uses: chainguard-actions/actions-cache/restore@46c2783c2418d3de33490be27a0d86c6268bc4fd # v6.1.0
       with:
         path: ${{ steps.fhir-package-cache.outputs.path }}
         key: ${{ steps.fhir-package-cache.outputs.key }}
@@ -554,7 +554,7 @@ runs:
     # Saved here, before validation and before JAVA_SNAPSHOT_ENABLED removes the package cache
     - name: Save FHIR package cache
       if: steps.fhir-package-cache.outputs.key != '' && steps.fhir-package-cache-restore.outputs.cache-hit != 'true'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      uses: chainguard-actions/actions-cache/save@46c2783c2418d3de33490be27a0d86c6268bc4fd # v6.1.0
       with:
         path: ${{ steps.fhir-package-cache.outputs.path }}
         key: ${{ steps.fhir-package-cache.outputs.key }}
@@ -764,7 +764,7 @@ runs:
 
     - name: Upload Quality Control report
       if: always() && steps.qc.outputs.report != ''
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+      uses: chainguard-actions/actions-upload-artifact@c91615377dcc230c6b156542d25044f9b8d80dd8 # v7
       with:
         name: ${{ inputs.REPORT_ARTIFACT_NAME }}
         path: ${{ runner.temp }}/fhir-check/
