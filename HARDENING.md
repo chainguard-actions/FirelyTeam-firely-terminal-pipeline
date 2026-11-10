@@ -10,96 +10,218 @@
 
 **Harden Agent Version:** `2`
 
-Action **FirelyTeam--firely-terminal-pipeline/v0.8.9** was hardened automatically. 3 finding(s) were identified and resolved across 4 iteration(s).
+Action **FirelyTeam--firely-terminal-pipeline/v0.8.9** was hardened automatically. 23 finding(s) were identified and resolved across 2 iteration(s).
 
 ## Findings Fixed
 
-### unpinned-uses (severity: high)
+### script-injection (severity: high)
 
-All three workflow files reference `actions/checkout@v4` using a mutable version tag instead of a pinned 40-character commit SHA. This allows supply-chain attacks if the tag is moved to a malicious commit.
-
-Locations:
-
-- `.github/workflows/update_firelyterminal.yml:17`
-- `.github/workflows/update_javavalidator.yml:17`
-- `.github/workflows/update_sushi.yml:17`
-
-### permissions (severity: medium)
-
-None of the three workflow files define a top-level `permissions:` block, and none of the jobs define job-level `permissions:` blocks. This means the workflows run with the default (potentially broad) GITHUB_TOKEN permissions. Each workflow should declare minimal required permissions (e.g., `contents: write`, `pull-requests: write`).
+Step 'Download Java Validator', rule (b) plus eval: the input JAVA_VALIDATOR_DOWNLOAD_LOCATION goes through eval in `JAVA_VALIDATOR_DOWNLOAD_LOCATION=$(eval echo "$JAVA_VALIDATOR_DOWNLOAD_LOCATION")`, so the shell runs any $(...), backticks or ';' in the input. The result is also used unquoted in `wget -q $JAVA_VALIDATOR_DOWNLOAD_LOCATION -O validator_cli.jar`, and `if $INPUT_JAVA_VALIDATION_ENABLED; then` runs the input's value as a command. Fix: drop eval and replace only the literal `$JAVA_VALIDATOR_VERSION` placeholder with bash parameter substitution, quote all expansions, and compare booleans with `[[ "$VAR" == "true" ]]`.
 
 Locations:
 
-- `.github/workflows/update_firelyterminal.yml:1`
-- `.github/workflows/update_javavalidator.yml:1`
-- `.github/workflows/update_sushi.yml:1`
+- `action.yml:679`
+- `action.yml:683`
+- `action.yml:686`
 
 ### script-injection (severity: high)
 
-Sub-rule (b): Multiple `run:` blocks in action.yml expand user-controlled input variables without double-quoting, allowing shell metacharacter injection. Affected lines:
-- `dotnet tool install --global Firely.Terminal --version $FIRELY_TERMINAL_VERSION` (FIRELY_TERMINAL_VERSION from inputs, unquoted)
-- `fhir login email=$INPUT_SIMPLIFIER_USERNAME password=$INPUT_SIMPLIFIER_PASSWORD` (both from inputs, unquoted)
-- `sudo npm install -g fsh-sushi@$SUSHI_VERSION` (SUSHI_VERSION from inputs, unquoted)
-- `sushi $INPUT_SUSHI_OPTIONS` (SUSHI_OPTIONS from inputs, unquoted — can inject arbitrary sushi CLI flags or shell metacharacters)
-- `fhir check $INPUT_PATH_TO_QUALITY_CONTROL_RULES` (PATH_TO_QUALITY_CONTROL_RULES from inputs, unquoted)
-- `java -jar validator_cli.jar $GITHUB_WORKSPACE/$p*.xml ... $INPUT_JAVA_VALIDATION_OPTIONS $UNESCPAED_IG_DEPENDENCIES $LOCAL_IG_PARAMETERS` (multiple unquoted vars from inputs)
-- `wget -q $JAVA_VALIDATOR_DOWNLOAD_LOCATION` (JAVA_VALIDATOR_DOWNLOAD_LOCATION from inputs, unquoted)
-
-Sub-rule (a): `JAVA_VALIDATOR_DOWNLOAD_LOCATION=$(eval echo "$JAVA_VALIDATOR_DOWNLOAD_LOCATION")` — the env var is sourced from `inputs.JAVA_VALIDATOR_DOWNLOAD_LOCATION` and passed directly to `eval`, enabling arbitrary command execution by a caller who supplies a malicious value such as `$(malicious_command)`.
-
-All these variables should be double-quoted in the shell commands.
+Step 'Check if .NET is installed', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED; then` expands inputs without quotes and runs their values as commands.
 
 Locations:
 
-- `action.yml:130`
-- `action.yml:148`
-- `action.yml:490`
+- `action.yml:90`
+
+### script-injection (severity: high)
+
+Step 'Check .NET SDK Version', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:105`
+
+### script-injection (severity: high)
+
+Step 'Install Firely.Terminal', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED; then` and `dotnet tool install --global Firely.Terminal --version $FIRELY_TERMINAL_VERSION` expand inputs without quotes.
+
+Locations:
+
+- `action.yml:116`
+- `action.yml:119`
+
+### script-injection (severity: high)
+
+Step 'Check Firely Terminal Version', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:131`
+
+### script-injection (severity: high)
+
+Step 'Simplifier login', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED; then` and `fhir login email=$INPUT_SIMPLIFIER_USERNAME password=$INPUT_SIMPLIFIER_PASSWORD` expand inputs without quotes.
+
+Locations:
+
+- `action.yml:142`
+- `action.yml:143`
+
+### script-injection (severity: high)
+
+Step 'Detect FHIR version and determine dependency source', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_JAVA_VALIDATION_ENABLED; then`, `if $INPUT_SUSHI_USE_CONFIG_DEPENDENCIES; then` and `elif $INPUT_SUSHI_ENABLED && ...` expand inputs without quotes.
+
+Locations:
+
+- `action.yml:168`
+- `action.yml:183`
+- `action.yml:202`
+
+### script-injection (severity: high)
+
+Step 'Validate FHIR version support', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED || $INPUT_JAVA_VALIDATION_ENABLED; then` expands inputs without quotes.
+
+Locations:
+
+- `action.yml:285`
+
+### script-injection (severity: high)
+
+Step 'Set FHIR specification and restore dependencies', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:363`
+
+### script-injection (severity: high)
+
+Step 'Check if npm is installed', rule (b): `if $INPUT_SUSHI_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:487`
+
+### script-injection (severity: high)
+
+Step 'Check npm Version', rule (b): `if $INPUT_SUSHI_ENABLED; then` expands the input without quotes.
+
+Locations:
+
 - `action.yml:500`
-- `action.yml:580`
-- `action.yml:640`
-- `action.yml:643`
+
+### script-injection (severity: high)
+
+Step 'Install fsh-sushi', rule (b): `if $INPUT_SUSHI_ENABLED; then`, `sudo chown -R $USER /usr/local/lib/node_modules` (USER is inherited env) and `sudo npm install -g fsh-sushi@$SUSHI_VERSION` expand values without quotes.
+
+Locations:
+
+- `action.yml:510`
+- `action.yml:511`
+- `action.yml:512`
+
+### script-injection (severity: high)
+
+Step 'Check SUSHI version', rule (b): `if $INPUT_SUSHI_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:521`
+
+### script-injection (severity: high)
+
+Step 'Generate conformance resources with SUSHI', rule (b): `if $INPUT_SUSHI_ENABLED; then` and `sushi $INPUT_SUSHI_OPTIONS` expand inputs without quotes.
+
+Locations:
+
+- `action.yml:530`
+- `action.yml:531`
+
+### script-injection (severity: high)
+
+Step 'Pre-processing FHIR profiles (Slicing open-closed)', rule (b): `if $CLOSE_SLICING_FOR_VALIDATION; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:544`
+
+### script-injection (severity: high)
+
+Step 'Configure Firely Terminal validator engine', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:599`
+
+### script-injection (severity: high)
+
+Step 'Run Quality Control checks', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED; then`, `if echo $INPUT_EXPECTED_FAILS | grep ...`, `fhir check $INPUT_PATH_TO_QUALITY_CONTROL_RULES` and `fhir check --fail $INPUT_PATH_TO_QUALITY_CONTROL_RULES` expand inputs without quotes.
+
+Locations:
+
+- `action.yml:623`
+- `action.yml:625`
+- `action.yml:626`
+- `action.yml:628`
+
+### script-injection (severity: high)
+
+Step 'Report Success - .NET Validator', rule (b): `if $INPUT_DOTNET_VALIDATION_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:639`
+
+### script-injection (severity: high)
+
+Step 'Remove package cache to enable the Java validator to create snapshots', rule (b): `if $INPUT_JAVA_SNAPSHOT_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:656`
+
+### script-injection (severity: high)
+
+Step 'Check if Java is installed', rule (b): `if $INPUT_JAVA_VALIDATION_ENABLED; then` expands the input without quotes.
+
+Locations:
+
+- `action.yml:666`
+
+### script-injection (severity: high)
+
+Step 'Validate all conformance resources in scope of the repository', rule (b): `if $INPUT_JAVA_VALIDATION_ENABLED; then`, `for p in $INPUT_PATH_TO_CONFORMANCE_RESOURCES;`, `if echo $INPUT_EXPECTED_FAILS | grep ...` and `java -jar validator_cli.jar ... -version $FHIR_VERSION $INPUT_JAVA_VALIDATION_OPTIONS ...` expand workflow-controlled values without quotes.
+
+Locations:
+
+- `action.yml:704`
+- `action.yml:727`
+- `action.yml:732`
+- `action.yml:742`
+- `action.yml:743`
+- `action.yml:745`
+
+### script-injection (severity: high)
+
+Step 'Validate all example resources in scope of the repository', rule (b): `if $INPUT_JAVA_VALIDATION_ENABLED; then`, `for p in $INPUT_PATH_TO_CONFORMANCE_RESOURCES;`, `for p in $PATH_TO_EXAMPLES;`, `if echo $INPUT_EXPECTED_FAILS | grep ...` and `java -jar validator_cli.jar ... -version $FHIR_VERSION $INPUT_JAVA_VALIDATION_OPTIONS ...` expand workflow-controlled values without quotes.
+
+Locations:
+
+- `action.yml:778`
+- `action.yml:795`
+- `action.yml:800`
+- `action.yml:810`
+- `action.yml:811`
+- `action.yml:813`
+
+### script-injection (severity: high)
+
+Step 'Re-run SUSHI to restore conformance resources after slicing modification', rule (b): `if $CLOSE_SLICING_FOR_VALIDATION && $INPUT_SUSHI_ENABLED; then` and `sushi $INPUT_SUSHI_OPTIONS` expand inputs without quotes.
+
+Locations:
+
+- `action.yml:841`
+- `action.yml:843`
 
 ## Iteration Notes
-
-### Iteration 1
-
-**Fixes applied:** unpinned-uses, permissions, script-injection
-
-**Notes:**
-
-Fixed all three findings:
-
-1. **unpinned-uses**: Pinned `actions/checkout@v4` to full SHA `11d5960a326750d5838078e36cf38b85af677262` in all three workflow files (.github/workflows/update_firelyterminal.yml, update_javavalidator.yml, update_sushi.yml).
-
-2. **permissions**: Added `permissions: { contents: write, pull-requests: write }` top-level blocks to all three workflow files (these workflows create branches and open PRs).
-
-3. **script-injection**: Fixed all instances in action.yml:
-   - Quoted `$FIRELY_TERMINAL_VERSION` in `dotnet tool install` command
-   - Quoted `$INPUT_SIMPLIFIER_USERNAME` and `$INPUT_SIMPLIFIER_PASSWORD` in `fhir login` command
-   - Quoted `fsh-sushi@$SUSHI_VERSION` in `npm install` command
-   - Replaced `sushi $INPUT_SUSHI_OPTIONS` with xargs-based array tokenization in both SUSHI invocation steps
-   - Replaced `fhir check $INPUT_PATH_TO_QUALITY_CONTROL_RULES` with `${INPUT_PATH_TO_QUALITY_CONTROL_RULES:+"$INPUT_PATH_TO_QUALITY_CONTROL_RULES"}` (optional single path value)
-   - Replaced `eval echo "$JAVA_VALIDATOR_DOWNLOAD_LOCATION"` with safe bash string substitution `"${JAVA_VALIDATOR_DOWNLOAD_LOCATION//'$JAVA_VALIDATOR_VERSION'/$JAVA_VALIDATOR_VERSION}"` to expand the version placeholder without arbitrary code execution
-   - Quoted `$JAVA_VALIDATOR_DOWNLOAD_LOCATION` in `wget` command
-   - Converted `$INPUT_JAVA_VALIDATION_OPTIONS` and `$UNESCPAED_IG_DEPENDENCIES` to arrays using xargs tokenization in both Java validator steps
-   - Converted `LOCAL_IG_PARAMETERS` and `COMBINED_IG_PARAMETERS` from space-concatenated strings to proper bash arrays with separate `-ig` and path elements
-
-### Iteration 2
-
-**Fixes applied:** script-injection, github-env-injection
-
-**Notes:**
-
-Fixed 2 security findings in hardened/action/action.yml:
-
-1. github-env-injection: Added sanitization of fhirVersion before writing to GITHUB_ENV. Added `safe_fhirVersion=$(printf '%s' "$fhirVersion" | tr -d '\n\r')` and changed the GITHUB_ENV write to use the sanitized variable.
-
-2. script-injection (6 locations):
-   - 'Run Quality Control checks' step: Double-quoted $INPUT_EXPECTED_FAILS in the echo|grep pipeline.
-   - 'Validate all conformance resources' step: Converted both `for p in $INPUT_PATH_TO_CONFORMANCE_RESOURCES` loops to use xargs-based array tokenization (conformance_paths array), and double-quoted $INPUT_EXPECTED_FAILS in the echo|grep pipeline.
-   - 'Validate all example resources' step: Converted `for p in $INPUT_PATH_TO_CONFORMANCE_RESOURCES` loop to use xargs-based array tokenization (conformance_paths array), converted `for p in $PATH_TO_EXAMPLES` loop to use xargs-based array tokenization (example_paths array), and double-quoted $INPUT_EXPECTED_FAILS in the echo|grep pipeline.
-
-PATH_TO_CONFORMANCE_RESOURCES and PATH_TO_EXAMPLES are space-separated lists of paths, so they correctly use xargs-based tokenization (which handles quoted paths) rather than simple double-quoting.
 
 ### Iteration 1
 
@@ -107,7 +229,15 @@ PATH_TO_CONFORMANCE_RESOURCES and PATH_TO_EXAMPLES are space-separated lists of 
 
 **Notes:**
 
-Fixed all 20+ script injection vulnerabilities in hardened/action/action.yml. Every instance where a boolean input variable was used directly as a shell command (e.g., `if $INPUT_DOTNET_VALIDATION_ENABLED; then`) was replaced with a safe string comparison (e.g., `if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" ]]; then`). This affects the following variables: INPUT_DOTNET_VALIDATION_ENABLED, INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED, INPUT_JAVA_VALIDATION_ENABLED, INPUT_SUSHI_ENABLED, INPUT_SUSHI_USE_CONFIG_DEPENDENCIES, INPUT_JAVA_SNAPSHOT_ENABLED, and CLOSE_SLICING_FOR_VALIDATION. Compound conditions with || and && were also fixed to use the safe string comparison form for each operand.
+All changes are in action.yml. Nothing has been run or tested.
+
+- **True/false inputs:** every `if $INPUT_X; then` check (DOTNET/JAVA/SUSHI/BFARM/JAVA_SNAPSHOT/CLOSE_SLICING/SUSHI_USE_CONFIG_DEPENDENCIES) is now `[[ "$X" == "true" ]]`, including the combined `||`/`&&` checks. Upstream ran the input's value as a command; now only the exact lowercase string "true" turns a step on. Something like "True" counts as off.
+- **Download Java Validator:** removed the `eval`. Only the literal `$JAVA_VALIDATOR_VERSION` / `${JAVA_VALIDATOR_VERSION}` placeholder is swapped out, using bash substitution with quoted pattern and replacement. The URL passed to wget is quoted.
+- **Single values are quoted:** the Firely.Terminal `--version`, `fsh-sushi@$SUSHI_VERSION`, `$USER` in `chown`, the `fhir login` email/password arguments, `-version "$FHIR_VERSION"` and `rm -rf "$fhirCacheLocation"`. The optional PATH_TO_QUALITY_CONTROL_RULES uses `${VAR:+"$VAR"}`, so it drops out entirely when empty.
+- **EXPECTED_FAILS:** checked with `printf '%s\n' "$INPUT_EXPECTED_FAILS" | grep -w -q ...`.
+- **List inputs:** SUSHI_OPTIONS, JAVA_VALIDATION_OPTIONS, PATH_TO_CONFORMANCE_RESOURCES and PATH_TO_EXAMPLES go into unquoted arrays (`arr=($VAR)`), which split on whitespace and expand globs exactly like upstream's unquoted use. The arrays are then expanded as `"${arr[@]}"`.
+- **Values built inside the script:** the IG dependency list (read from package.json) also goes into an array. The `-ig <path>` arguments are now built as an array, so a path containing spaces stays one argument instead of being split as it was upstream.
+- **File globs:** the `*.xml` / `*.json` patterns are kept as `"$GITHUB_WORKSPACE/$p"*.xml`, so the globs still expand.
 
 ### Iteration 2
 
@@ -115,5 +245,5 @@ Fixed all 20+ script injection vulnerabilities in hardened/action/action.yml. Ev
 
 **Notes:**
 
-Fixed all 6 github-env-injection instances across 3 workflow files by adding `safe=$(printf '%s' "$VAR" | tr -d '\n\r')` sanitization before each write to $GITHUB_ENV. Affected variables: FIRELY_TERMINAL_VERSION and LATEST_RELEASE in update_firelyterminal.yml; JAVA_VALIDATOR_VERSION and LATEST_RELEASE in update_javavalidator.yml; SUSHI_VERSION and LATEST_RELEASE in update_sushi.yml. Also quoted $GITHUB_ENV references consistently.
+In action.yml, the 'Detect FHIR version' step now strips \n and \r from fhirVersion (printf '%s' | tr -d '\n\r') before it writes FHIR_VERSION to $GITHUB_ENV. Earlier steps and log output still use the original value.
 
