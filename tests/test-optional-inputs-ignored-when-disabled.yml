@@ -1,0 +1,54 @@
+name: Test - Optional inputs are accepted and ignored when validators/SUSHI disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test-optional-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up package.json in workspace root
+        run: |
+          cp "$GITHUB_WORKSPACE/tests/fixtures/package.json" "$GITHUB_WORKSPACE/package.json"
+          cat "$GITHUB_WORKSPACE/package.json"
+          # Snapshot resources to verify they are untouched
+          find "$GITHUB_WORKSPACE/tests/fixtures/resources" -type f -exec sha256sum {} \; | sort > /tmp/before.sha
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/resources
+          PATH_TO_EXAMPLES: tests/fixtures/resources
+          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/custom
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          SUSHI_OPTIONS: --out fsh-generated
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: testpassword
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+
+      - name: Assert action succeeded and did not run SUSHI or modify resources
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -d "$GITHUB_WORKSPACE/fsh-generated" ]; then
+            echo "FAIL: SUSHI output directory created although SUSHI disabled"
+            exit 1
+          fi
+          if [ -f "$GITHUB_WORKSPACE/validator_cli.jar" ]; then
+            echo "FAIL: Java validator downloaded although Java validation disabled"
+            exit 1
+          fi
+          find "$GITHUB_WORKSPACE/tests/fixtures/resources" -type f -exec sha256sum {} \; | sort > /tmp/after.sha
+          if ! diff /tmp/before.sha /tmp/after.sha; then
+            echo "FAIL: resources were modified"
+            exit 1
+          fi
+          echo "PASS"
