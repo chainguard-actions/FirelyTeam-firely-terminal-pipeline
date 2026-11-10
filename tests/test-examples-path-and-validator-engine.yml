@@ -1,0 +1,52 @@
+name: Test - PATH_TO_EXAMPLES and FIRELY_TERMINAL_VALIDATOR_ENGINE accepted with validators disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create fixtures
+        run: |
+          mkdir -p tests/fixtures/conformance tests/fixtures/examples
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          cat > tests/fixtures/examples/patient.json <<'EOF'
+          {"resourceType": "Patient", "id": "example"}
+          EOF
+          cp tests/fixtures/examples/patient.json /tmp/patient.orig.json
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance
+          PATH_TO_EXAMPLES: tests/fixtures/examples
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: fake-user@example.com
+          SIMPLIFIER_PASSWORD: fake-password
+
+      - name: Assert action succeeded and examples untouched
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! cmp -s tests/fixtures/examples/patient.json /tmp/patient.orig.json; then
+            echo "FAIL: example file was modified"
+            exit 1
+          fi
+          echo "PASS"

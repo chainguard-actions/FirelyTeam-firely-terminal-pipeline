@@ -1,0 +1,57 @@
+name: Test - EXPECTED_FAILS and PATH_TO_QUALITY_CONTROL_RULES accepted with validators disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create minimal package.json and QC rules fixture
+        run: |
+          mkdir -p tests/fixtures/conformance tests/fixtures/qc
+          cat > package.json <<'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          cp package.json /tmp/package.json.orig
+          cat > tests/fixtures/qc/custom.rules.yaml <<'EOF'
+          - action: parse
+            status: "Parsing all files"
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/conformance
+          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SUSHI_ENABLED: false
+          SIMPLIFIER_USERNAME: fake-user@example.com
+          SIMPLIFIER_PASSWORD: fake-password
+
+      - name: Assert action succeeded and package.json untouched
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! cmp -s package.json /tmp/package.json.orig; then
+            echo "FAIL: package.json was modified"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not be downloaded"
+            exit 1
+          fi
+          echo "PASS"
