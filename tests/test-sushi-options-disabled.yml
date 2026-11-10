@@ -1,0 +1,49 @@
+name: Test - SUSHI_OPTIONS ignored when SUSHI is disabled
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create package.json and resources
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
+          {
+            "name": "test-fhir-project",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {}
+          }
+          EOF
+          mkdir -p "$GITHUB_WORKSPACE/resources"
+          echo '{"resourceType":"StructureDefinition","id":"x","url":"http://example.org/x"}' > "$GITHUB_WORKSPACE/resources/sd.json"
+
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          SUSHI_ENABLED: false
+          SUSHI_OPTIONS: "build . --log-level debug"
+          CLOSE_SLICING_FOR_VALIDATION: false
+          DOTNET_VALIDATION_ENABLED: false
+          JAVA_VALIDATION_ENABLED: false
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: test-password
+
+      - name: Assert success and no SUSHI output
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -d "$GITHUB_WORKSPACE/fsh-generated" ]; then
+            echo "FAIL: SUSHI should not have run"
+            exit 1
+          fi
+          echo "PASS"

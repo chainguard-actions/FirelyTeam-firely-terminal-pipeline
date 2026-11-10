@@ -1,4 +1,4 @@
-name: Test - PATH_TO_EXAMPLES input coverage
+name: Test - Optional validator inputs are accepted when validators are disabled
 on:
   workflow_dispatch:
 
@@ -8,25 +8,17 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # Create a minimal package.json with FHIR R4 version info
-      - name: Create package.json fixture
+      - name: Create package.json and resources
         run: |
           cat > "$GITHUB_WORKSPACE/package.json" << 'EOF'
           {
             "name": "test-fhir-project",
             "version": "1.0.0",
-            "description": "Test FHIR project",
-            "fhirVersions": [
-              "4.0.1"
-            ],
+            "fhirVersions": ["4.0.1"],
             "dependencies": {}
           }
           EOF
-
-      # Create a minimal conformance resources directory
-      - name: Create conformance resources directory
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/resources"
+          mkdir -p "$GITHUB_WORKSPACE/resources" "$GITHUB_WORKSPACE/examples"
           cat > "$GITHUB_WORKSPACE/resources/StructureDefinition-example.json" << 'EOF'
           {
             "resourceType": "StructureDefinition",
@@ -41,35 +33,39 @@ jobs:
             "derivation": "constraint"
           }
           EOF
-
-      # Create a minimal examples directory
-      - name: Create examples directory
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/examples"
           cat > "$GITHUB_WORKSPACE/examples/Patient-example.json" << 'EOF'
-          {
-            "resourceType": "Patient",
-            "id": "example",
-            "name": [
-              {
-                "family": "Smith",
-                "given": ["John"]
-              }
-            ]
-          }
+          { "resourceType": "Patient", "id": "example" }
           EOF
+          sha256sum resources/*.json examples/*.json > /tmp/before.sha
 
       - id: action
         uses: .
         with:
           PATH_TO_CONFORMANCE_RESOURCES: resources
           PATH_TO_EXAMPLES: examples
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
           DOTNET_VALIDATION_ENABLED: false
           JAVA_VALIDATION_ENABLED: false
           SIMPLIFIER_USERNAME: test@example.com
           SIMPLIFIER_PASSWORD: test-password
 
-      - name: Assert action completed successfully with PATH_TO_EXAMPLES set
+      - name: Assert action succeeded and files untouched
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
         run: |
-          echo "Action completed without errors when PATH_TO_EXAMPLES is set and Java validation is disabled"
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! sha256sum -c /tmp/before.sha; then
+            echo "FAIL: resources/examples were modified"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not have been downloaded"
+            exit 1
+          fi
           echo "PASS"
