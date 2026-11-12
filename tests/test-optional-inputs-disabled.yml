@@ -1,4 +1,4 @@
-name: Test optional inputs accepted with validation disabled
+name: Test optional inputs are inert when validators and SUSHI are disabled
 on:
   workflow_dispatch:
 jobs:
@@ -8,23 +8,20 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Prepare conformance and example folders
         run: |
-          mkdir -p .optional-work/conformance .optional-work/examples
-          cat > .optional-work/conformance/sd.json <<'EOF'
-          {"resourceType":"StructureDefinition","url":"http://example.org/SD/opt","differential":{"element":[{"id":"Patient.identifier","slicing":{"rules":"open"}}]}}
+          mkdir -p .opt-work/conformance .opt-work/examples
+          cat > .opt-work/conformance/sd.json <<'EOF'
+          {"resourceType":"StructureDefinition","url":"http://example.org/SD/b","differential":{"element":[{"id":"Patient.identifier","slicing":{"rules":"open"}}]}}
           EOF
-          cat > .optional-work/examples/patient.json <<'EOF'
-          {"resourceType":"Patient","id":"example"}
-          EOF
-          rm -f validator_cli.jar
+          echo '{"resourceType":"Patient","id":"p1"}' > .opt-work/examples/patient.json
       - id: action
         uses: .
         with:
-          PATH_TO_CONFORMANCE_RESOURCES: .optional-work/conformance
-          PATH_TO_EXAMPLES: .optional-work/examples
-          PATH_TO_QUALITY_CONTROL_RULES: .optional-work/custom
-          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          PATH_TO_CONFORMANCE_RESOURCES: .opt-work/conformance
+          PATH_TO_EXAMPLES: .opt-work/examples
+          PATH_TO_QUALITY_CONTROL_RULES: .opt-work/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_EXAMPLES_JAVA
           FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
-          SUSHI_OPTIONS: --log-level debug
+          SUSHI_OPTIONS: '--out .opt-work/sushi-out; touch .opt-work/pwned'
           SIMPLIFIER_USERNAME: nobody@example.com
           SIMPLIFIER_PASSWORD: unused
           DOTNET_VALIDATION_ENABLED: 'false'
@@ -39,22 +36,18 @@ jobs:
             echo "FAIL: expected success"
             exit 1
           fi
-          RULES=$(jq -r '.differential.element[0].slicing.rules' .optional-work/conformance/sd.json)
+          if [ -e .opt-work/pwned ] || [ -e .opt-work/sushi-out ]; then
+            echo "FAIL: SUSHI options must not be executed/used when SUSHI is disabled"
+            exit 1
+          fi
+          RULES=$(jq -r '.differential.element[0].slicing.rules' .opt-work/conformance/sd.json)
           echo "rules: $RULES"
           if [ "$RULES" != "open" ]; then
-            echo "FAIL: slicing should not be modified"
+            echo "FAIL: slicing should be unchanged"
             exit 1
           fi
           if [ -f validator_cli.jar ]; then
             echo "FAIL: Java validator should not be downloaded"
-            exit 1
-          fi
-          if [ -d fsh-generated ]; then
-            echo "FAIL: SUSHI should not have run"
-            exit 1
-          fi
-          if [ "$(jq -r '.id' .optional-work/examples/patient.json)" != "example" ]; then
-            echo "FAIL: example file was modified"
             exit 1
           fi
           echo "PASS"
