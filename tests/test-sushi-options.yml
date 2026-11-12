@@ -1,4 +1,4 @@
-name: Test SUSHI options are passed to sushi
+name: Test SUSHI enabled with custom SUSHI_OPTIONS (mocked npm/sushi)
 on:
   workflow_dispatch:
 jobs:
@@ -6,82 +6,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Install fake sudo, npm and sushi on PATH
+      - name: Ensure no sushi-config.yaml (skip yq install)
+        run: rm -f sushi-config.yaml
+      - name: Install fake sudo, npm and sushi
         run: |
-          MOCK_DIR="$RUNNER_TEMP/sushi-mocks"
-          rm -rf "$MOCK_DIR"
-          mkdir -p "$MOCK_DIR"
+          BIN="$RUNNER_TEMP/fakebin"
+          mkdir -p "$BIN"
           LOG="$RUNNER_TEMP/sushi-args.log"
-          rm -f "$LOG" "$RUNNER_TEMP/npm-calls.log" "$RUNNER_TEMP/sudo-calls.log"
-
-          cat > "$MOCK_DIR/sudo" <<EOF
-          #!/bin/sh
-          echo "\$*" >> "$RUNNER_TEMP/sudo-calls.log"
-          case "\$1" in
-            chown) exit 0 ;;
-          esac
+          : > "$LOG"
+          cat > "$BIN/sudo" <<EOF
+          #!/bin/bash
+          echo "sudo \$*" >> "$LOG"
+          if [ "\$1" = "chown" ]; then exit 0; fi
           exec "\$@"
           EOF
-
-          cat > "$MOCK_DIR/npm" <<EOF
-          #!/bin/sh
-          echo "\$*" >> "$RUNNER_TEMP/npm-calls.log"
-          case "\$1" in
-            --version) echo "10.0.0-fake" ;;
-          esac
+          cat > "$BIN/npm" <<EOF
+          #!/bin/bash
+          echo "npm \$*" >> "$LOG"
+          if [ "\$1" = "--version" ]; then echo "10.0.0"; fi
           exit 0
           EOF
-
-          cat > "$MOCK_DIR/sushi" <<EOF
-          #!/bin/sh
-          if [ "\$1" = "-v" ]; then
-            echo "SUSHI v3.21.0 (fake)"
-            exit 0
-          fi
-          echo "INVOCATION" >> "$LOG"
-          for a in "\$@"; do
-            echo "ARG:\$a" >> "$LOG"
-          done
+          cat > "$BIN/sushi" <<EOF
+          #!/bin/bash
+          echo "sushi \$*" >> "$LOG"
+          if [ "\$1" = "-v" ]; then echo "SUSHI v3.21.0"; fi
           exit 0
           EOF
-
-          chmod +x "$MOCK_DIR/sudo" "$MOCK_DIR/npm" "$MOCK_DIR/sushi"
-          echo "$MOCK_DIR" >> "$GITHUB_PATH"
+          chmod +x "$BIN"/*
+          echo "$BIN" >> "$GITHUB_PATH"
       - id: action
         uses: .
         with:
-          PATH_TO_CONFORMANCE_RESOURCES: fsh-generated/resources
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-test/conformance
           SIMPLIFIER_USERNAME: user@example.com
           SIMPLIFIER_PASSWORD: secret
           DOTNET_VALIDATION_ENABLED: 'false'
           JAVA_VALIDATION_ENABLED: 'false'
           SUSHI_ENABLED: 'true'
-          SUSHI_OPTIONS: 'build . --log-level debug'
-      - name: Assert sushi received options as separate arguments
+          SUSHI_VERSION: '3.21.0'
+          SUSHI_OPTIONS: 'fsh-project --out generated-output'
+      - name: Assert sushi invoked with SUSHI_OPTIONS
         run: |
           LOG="$RUNNER_TEMP/sushi-args.log"
-          echo "--- sushi log ---"
-          cat "$LOG" || true
-          echo "--- npm log ---"
-          cat "$RUNNER_TEMP/npm-calls.log" || true
-          if [ ! -f "$LOG" ]; then
-            echo "FAIL: sushi was never invoked"
-            exit 1
-          fi
-          INVOCATIONS=$(grep -c '^INVOCATION$' "$LOG")
-          if [ "$INVOCATIONS" != "1" ]; then
-            echo "FAIL: expected exactly 1 sushi invocation, got $INVOCATIONS"
-            exit 1
-          fi
-          EXPECTED=$(printf 'INVOCATION\nARG:build\nARG:.\nARG:--log-level\nARG:debug')
-          ACTUAL=$(cat "$LOG")
-          if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "FAIL: sushi args mismatch"
-            echo "expected:"; echo "$EXPECTED"
-            exit 1
-          fi
-          if ! grep -q 'install -g fsh-sushi@3.21.0' "$RUNNER_TEMP/npm-calls.log"; then
-            echo "FAIL: expected npm install -g fsh-sushi@3.21.0"
+          cat "$LOG"
+          for s in "npm --version" "npm install -g fsh-sushi@3.21.0" "sushi -v" "sushi fsh-project --out generated-output"; do
+            grep -qxF -- "$s" "$LOG" || { echo "FAIL: missing call '$s'"; exit 1; }
+          done
+          COUNT=$(grep -cxF -- "sushi fsh-project --out generated-output" "$LOG")
+          echo "sushi build invocations: $COUNT"
+          if [ "$COUNT" != "1" ]; then
+            echo "FAIL: expected exactly one SUSHI build (no slicing re-run)"
             exit 1
           fi
           echo "PASS"

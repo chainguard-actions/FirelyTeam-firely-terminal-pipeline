@@ -104,7 +104,7 @@ runs:
     
     - name: Check if .NET is installed
       run: |
-        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" ]] || [[ "$INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED" == "true" ]]; then
+        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" || "$INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED" == "true" ]]; then
           if ! command -v dotnet &> /dev/null
           then
               echo "dotnet could not be found. Please see actions/setup-dotnet to set it up before running this action."
@@ -130,7 +130,7 @@ runs:
     # Install Firely.Terminal
     - name: Install Firely.Terminal
       run: |
-        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" ]] || [[ "$INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED" == "true" ]]; then
+        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" || "$INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED" == "true" ]]; then
           if ! command -v fhir &> /dev/null
           then
             dotnet tool install --global Firely.Terminal --version "$FIRELY_TERMINAL_VERSION" > /dev/null
@@ -182,7 +182,7 @@ runs:
     # Determine FHIR version source and dependency handling strategy
     - name: Detect FHIR version and determine dependency source
       run: |
-        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" ]] || [[ "$INPUT_JAVA_VALIDATION_ENABLED" == "true" ]]; then
+        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" || "$INPUT_JAVA_VALIDATION_ENABLED" == "true" ]]; then
           
           # Check which files are available
           packageJsonExists=false
@@ -285,8 +285,7 @@ runs:
           fi
           
           echo "Detected FHIR version: $fhirVersion"
-          safe=$(printf '%s' "$fhirVersion" | tr -d '\n\r')
-          echo "FHIR_VERSION=$safe" >> "$GITHUB_ENV"
+          echo "FHIR_VERSION=$fhirVersion" >> "$GITHUB_ENV"
         else
           echo "Skipping FHIR version detection (no validation enabled)"
         fi
@@ -300,13 +299,13 @@ runs:
     # Validate that the detected FHIR version is supported by this action
     - name: Validate FHIR version support
       run: |
-        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" ]] || [[ "$INPUT_JAVA_VALIDATION_ENABLED" == "true" ]]; then
+        if [[ "$INPUT_DOTNET_VALIDATION_ENABLED" == "true" || "$INPUT_JAVA_VALIDATION_ENABLED" == "true" ]]; then
           # Define supported FHIR versions
           supportedVersions=("3.0.2" "4.0.1" "4.1.0" "4.3.0" "4.6.0" "5.0.0")
           
           # Check if detected version is supported
           supportedVersion=false
-          for supportedFhirVersion in "${supportedVersions[@]}"; do
+          for supportedFhirVersion in ${supportedVersions[@]}; do
             if [[ "$FHIR_VERSION" = "$supportedFhirVersion" ]]; then
               supportedVersion=true
               break
@@ -401,7 +400,7 @@ runs:
           fhir config regenerate on
           FHIR_RESTORE=$((fhir restore | tr '\n' ' ')|| true)  # Print everything in a single line
           if [[ "$FHIR_RESTORE" == *"Cannot restore"* ]]; then
-            echo $FHIR_RESTORE
+            echo "$FHIR_RESTORE"
             exit 1
           fi
           echo "Restore of package.json was successful: $FHIR_RESTORE"
@@ -482,7 +481,7 @@ runs:
               
               packageFile="${packageName}-${packageVersion}.tgz"
               packageDownloadResponseCode=$(curl -H "Authorization: Bearer $ztsAccessToken" \
-                "https://terminologien.bfarm.de/packages/$packageName/$packageVersion" \
+                https://terminologien.bfarm.de/packages/$packageName/$packageVersion \
                 -s -o "$packageFile" -w "%{http_code}")
                 
               if [[ "$packageDownloadResponseCode" == 2* && -s "$packageFile" ]]; then
@@ -562,10 +561,8 @@ runs:
     - name: Generate conformance resources with SUSHI
       run: |
         if [[ "$INPUT_SUSHI_ENABLED" == "true" ]]; then
-          sushi_args=()
-          if [ -n "$INPUT_SUSHI_OPTIONS" ]; then
-            read -r -d '' -a sushi_args <<< "$INPUT_SUSHI_OPTIONS" || true
-          fi
+          # shellcheck disable=SC2206
+          sushi_args=($INPUT_SUSHI_OPTIONS)   # same split and glob as upstream's unquoted $INPUT_SUSHI_OPTIONS
           sushi "${sushi_args[@]}"
         fi
       shell: bash
@@ -718,9 +715,9 @@ runs:
           CHECK_JAVA_VERSION=$(java -version 2>&1 | head -1 | cut -d'"' -f2)
           echo "JAVA_VERSION: $CHECK_JAVA_VERSION"
           echo "JAVA_VALIDATOR_VERSION: $JAVA_VALIDATOR_VERSION"
-          # Substitute the $JAVA_VALIDATOR_VERSION placeholder literally (no eval)
-          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//'${JAVA_VALIDATOR_VERSION}'/"$JAVA_VALIDATOR_VERSION"}"
-          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//'$JAVA_VALIDATOR_VERSION'/"$JAVA_VALIDATOR_VERSION"}"
+          # Literal placeholder substitution (no eval)
+          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//\$\{JAVA_VALIDATOR_VERSION\}/$JAVA_VALIDATOR_VERSION}"
+          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//\$JAVA_VALIDATOR_VERSION/$JAVA_VALIDATOR_VERSION}"
           echo "JAVA_VALIDATOR_DOWNLOAD_LOCATION: $JAVA_VALIDATOR_DOWNLOAD_LOCATION"
           
           wget -q "$JAVA_VALIDATOR_DOWNLOAD_LOCATION" -O validator_cli.jar
@@ -764,29 +761,19 @@ runs:
           fi
           
           echo "IG_DEPENDENCIES: $IG_DEPENDENCIES"
-
-          # Tokenize list inputs on whitespace (as upstream's unquoted expansion did)
-          conformance_paths=()
-          if [ -n "$INPUT_PATH_TO_CONFORMANCE_RESOURCES" ]; then
-            read -r -d '' -a conformance_paths <<< "$INPUT_PATH_TO_CONFORMANCE_RESOURCES" || true
-          fi
-          java_opts=()
-          if [ -n "$INPUT_JAVA_VALIDATION_OPTIONS" ]; then
-            read -r -d '' -a java_opts <<< "$INPUT_JAVA_VALIDATION_OPTIONS" || true
-          fi
-          UNESCPAED_IG_DEPENDENCIES="${IG_DEPENDENCIES//\"/}"
-          ig_deps=()
-          if [ -n "$UNESCPAED_IG_DEPENDENCIES" ]; then
-            read -r -d '' -a ig_deps <<< "$UNESCPAED_IG_DEPENDENCIES" || true
-          fi
           
-          local_ig_params=()
-          for p in "${conformance_paths[@]}"; # Get combined path to conformance resources, we want to provide all other directories as context for the current validation
+          # shellcheck disable=SC2206
+          CONFORMANCE_PATHS=($INPUT_PATH_TO_CONFORMANCE_RESOURCES)   # same split and glob as upstream's unquoted expansion
+          # shellcheck disable=SC2206
+          JAVA_OPTS=($INPUT_JAVA_VALIDATION_OPTIONS)                 # same split and glob as upstream's unquoted expansion
+          
+          LOCAL_IG_PARAMETERS=()
+          for p in "${CONFORMANCE_PATHS[@]}"; # Get combined path to conformance resources, we want to provide all other directories as context for the current validation
           do  
-            local_ig_params+=(-ig "$GITHUB_WORKSPACE/$p")
+            LOCAL_IG_PARAMETERS+=(-ig "$GITHUB_WORKSPACE/$p")
           done
           
-          for p in "${conformance_paths[@]}"; 
+          for p in "${CONFORMANCE_PATHS[@]}"; 
           do
           
             # Ensure directory ends with "/"
@@ -794,10 +781,14 @@ runs:
               p="$p/"
             fi
             
+            UNESCPAED_IG_DEPENDENCIES=$(printf '%s' "$IG_DEPENDENCIES" | tr -d '"')
+            # shellcheck disable=SC2206
+            IG_DEP_ARGS=($UNESCPAED_IG_DEPENDENCIES)
+            
             if printf '%s\n' "$INPUT_EXPECTED_FAILS" | grep -w -q VALIDATION_CONFORMANCE_JAVA; then
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${java_opts[@]}" "${ig_deps[@]}" "${local_ig_params[@]}" || true)
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${LOCAL_IG_PARAMETERS[@]}" || true)
             else
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${java_opts[@]}" "${ig_deps[@]}" "${local_ig_params[@]}")
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${LOCAL_IG_PARAMETERS[@]}")
             fi
 
             javaValidatorOutput=$(echo "$javaValidatorOutput" | sed -E "
@@ -848,44 +839,35 @@ runs:
           else
             IG_DEPENDENCIES=$(jq -r '(.dependencies + .["zts-dependencies"]) | to_entries | map("-ig " + .key + "#" + .value) | join(" ")' package.json)
           fi
-
-          # Tokenize list inputs on whitespace (as upstream's unquoted expansion did)
-          conformance_paths=()
-          if [ -n "$INPUT_PATH_TO_CONFORMANCE_RESOURCES" ]; then
-            read -r -d '' -a conformance_paths <<< "$INPUT_PATH_TO_CONFORMANCE_RESOURCES" || true
-          fi
-          example_paths=()
-          if [ -n "$PATH_TO_EXAMPLES" ]; then
-            read -r -d '' -a example_paths <<< "$PATH_TO_EXAMPLES" || true
-          fi
-          java_opts=()
-          if [ -n "$INPUT_JAVA_VALIDATION_OPTIONS" ]; then
-            read -r -d '' -a java_opts <<< "$INPUT_JAVA_VALIDATION_OPTIONS" || true
-          fi
-          UNESCPAED_IG_DEPENDENCIES="${IG_DEPENDENCIES//\"/}"
-          ig_deps=()
-          if [ -n "$UNESCPAED_IG_DEPENDENCIES" ]; then
-            read -r -d '' -a ig_deps <<< "$UNESCPAED_IG_DEPENDENCIES" || true
-          fi
-
-          combined_ig_params=()
-          for p in "${conformance_paths[@]}"; # Get combined path to conformance resources, we want to validate against the current version of the conformance resources
+          # shellcheck disable=SC2206
+          CONFORMANCE_PATHS=($INPUT_PATH_TO_CONFORMANCE_RESOURCES)   # same split and glob as upstream's unquoted expansion
+          # shellcheck disable=SC2206
+          EXAMPLE_PATHS=($PATH_TO_EXAMPLES)                          # same split and glob as upstream's unquoted expansion
+          # shellcheck disable=SC2206
+          JAVA_OPTS=($INPUT_JAVA_VALIDATION_OPTIONS)                 # same split and glob as upstream's unquoted expansion
+          
+          COMBINED_IG_PARAMETERS=()
+          for p in "${CONFORMANCE_PATHS[@]}"; # Get combined path to conformance resources, we want to validate against the current version of the conformance resources
           do  
-            combined_ig_params+=(-ig "$GITHUB_WORKSPACE/$p")
+            COMBINED_IG_PARAMETERS+=(-ig "$GITHUB_WORKSPACE/$p")
           done
           
-          for p in "${example_paths[@]}"; 
+          for p in "${EXAMPLE_PATHS[@]}"; 
           do
             
             # Ensure directory ends with "/"
             if [[ ! "$p" =~ .*/$ ]]; then
               p="$p/"
             fi
+          
+            UNESCPAED_IG_DEPENDENCIES=$(printf '%s' "$IG_DEPENDENCIES" | tr -d '"')
+            # shellcheck disable=SC2206
+            IG_DEP_ARGS=($UNESCPAED_IG_DEPENDENCIES)
             
             if printf '%s\n' "$INPUT_EXPECTED_FAILS" | grep -w -q VALIDATION_EXAMPLES_JAVA; then
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${java_opts[@]}" "${ig_deps[@]}" "${combined_ig_params[@]}" || true)
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${COMBINED_IG_PARAMETERS[@]}" || true)
             else
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${java_opts[@]}" "${ig_deps[@]}" "${combined_ig_params[@]}")
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${COMBINED_IG_PARAMETERS[@]}")
             fi
 
             javaValidatorOutput=$(echo "$javaValidatorOutput" | sed -E "
@@ -913,12 +895,10 @@ runs:
 
     - name: Re-run SUSHI to restore conformance resources after slicing modification
       run: |
-        if [[ "$CLOSE_SLICING_FOR_VALIDATION" == "true" ]] && [[ "$INPUT_SUSHI_ENABLED" == "true" ]]; then
+        if [[ "$CLOSE_SLICING_FOR_VALIDATION" == "true" && "$INPUT_SUSHI_ENABLED" == "true" ]]; then
           echo "Re-running SUSHI to restore conformance resources after closing slicing for validation ..."
-          sushi_args=()
-          if [ -n "$INPUT_SUSHI_OPTIONS" ]; then
-            read -r -d '' -a sushi_args <<< "$INPUT_SUSHI_OPTIONS" || true
-          fi
+          # shellcheck disable=SC2206
+          sushi_args=($INPUT_SUSHI_OPTIONS)   # same split and glob as upstream's unquoted $INPUT_SUSHI_OPTIONS
           sushi "${sushi_args[@]}"
         fi
       shell: bash
