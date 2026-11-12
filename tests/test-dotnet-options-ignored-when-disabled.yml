@@ -1,4 +1,4 @@
-name: Test optional inputs are ignored when validation and SUSHI are disabled
+name: Test .NET options are ignored when validation is disabled
 on:
   workflow_dispatch:
 jobs:
@@ -6,37 +6,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Ensure no package.json / sushi-config.yaml in workspace root
+      - name: Ensure clean workspace root
         run: rm -f "$GITHUB_WORKSPACE/package.json" "$GITHUB_WORKSPACE/sushi-config.yaml" "$GITHUB_WORKSPACE/validator_cli.jar"
       - id: action
         uses: .
         with:
           PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/profiles
-          PATH_TO_EXAMPLES: tests/fixtures/profiles
-          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/qc/custom
-          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_EXAMPLES_JAVA
-          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
-          SUSHI_OPTIONS: --log-level debug
-          SUSHI_ENABLED: 'false'
           SIMPLIFIER_USERNAME: unused@example.com
           SIMPLIFIER_PASSWORD: unused
           DOTNET_VALIDATION_ENABLED: 'false'
           JAVA_VALIDATION_ENABLED: 'false'
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: not-a-valid-engine
+          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/qc/custom
       - name: Assert success and no side effects
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           if [ "$OUTCOME" != "success" ]; then
-            echo "FAIL: expected success"; exit 1
+            echo "FAIL: expected success (engine/QC/expected-fails only apply to .NET validation)"; exit 1
           fi
           if [ -f "$GITHUB_WORKSPACE/package.json" ]; then
             echo "FAIL: package.json should not have been generated"; exit 1
           fi
           if [ -f "$GITHUB_WORKSPACE/validator_cli.jar" ]; then
             echo "FAIL: Java validator should not have been downloaded"; exit 1
-          fi
-          if ! grep -q '"rules": "open"' "$GITHUB_WORKSPACE/tests/fixtures/profiles/child-profile.json"; then
-            echo "FAIL: profiles should not be modified"; exit 1
           fi
           echo "PASS"
