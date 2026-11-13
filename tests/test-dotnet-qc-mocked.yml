@@ -1,0 +1,83 @@
+name: Test .NET quality control with mocked Firely Terminal
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up project and fake dotnet/fhir
+        run: |
+          rm -f sushi-config.yaml /tmp/fake-fhir.log
+          cat > package.json <<'EOF'
+          {
+            "name": "test",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1"
+            }
+          }
+          EOF
+          mkdir -p /tmp/fakebin-qc
+          cat > /tmp/fakebin-qc/dotnet <<'EOF'
+          #!/bin/sh
+          if [ "$1" = "--version" ]; then echo "8.0.100"; exit 0; fi
+          echo "dotnet $*" >> /tmp/fake-fhir.log
+          exit 0
+          EOF
+          cat > /tmp/fakebin-qc/fhir <<'EOF'
+          #!/bin/sh
+          echo "$*" >> /tmp/fake-fhir.log
+          case "$1" in
+            -v) echo "Firely Terminal 3.4.0"; exit 0 ;;
+            check)
+              for a in "$@"; do
+                if [ "$a" = "--help" ]; then echo "Usage: fhir check [rules] --fail"; exit 0; fi
+              done
+              for a in "$@"; do
+                if [ "$a" = "--fail" ]; then echo "simulated QC error"; exit 1; fi
+              done
+              echo "simulated QC error (not failing)"
+              exit 0
+              ;;
+          esac
+          exit 0
+          EOF
+          chmod +x /tmp/fakebin-qc/dotnet /tmp/fakebin-qc/fhir
+          echo "/tmp/fakebin-qc" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          SIMPLIFIER_USERNAME: user@example.com
+          SIMPLIFIER_PASSWORD: secret
+          DOTNET_VALIDATION_ENABLED: 'true'
+          JAVA_VALIDATION_ENABLED: 'false'
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
+      - name: Assert Firely Terminal invocations
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "--- fhir log ---"; cat /tmp/fake-fhir.log || true
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          for expected in "login email=user@example.com password=secret" "spec R4" "restore" "config validator netsdk" "check qc/custom"; do
+            if ! grep -qx -- "$expected" /tmp/fake-fhir.log; then
+              echo "FAIL: missing fhir invocation '$expected'"
+              exit 1
+            fi
+          done
+          if grep -q -- "check qc/custom --fail" /tmp/fake-fhir.log; then
+            echo "FAIL: --fail should be dropped due to EXPECTED_FAILS"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json

@@ -1,0 +1,104 @@
+name: Test Java validation with mocked validator
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up project and fake java/wget
+        run: |
+          rm -f sushi-config.yaml /tmp/fake-java.log /tmp/fake-wget.log
+          cat > package.json <<'EOF'
+          {
+            "name": "test",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1",
+              "de.basisprofil.r4": "1.4.0"
+            }
+          }
+          EOF
+          mkdir -p /tmp/fakebin
+          cat > /tmp/fakebin/java <<'EOF'
+          #!/bin/sh
+          if [ "$1" = "-version" ]; then
+            echo 'openjdk version "17.0.0" 2021-09-14' >&2
+            exit 0
+          fi
+          echo "$*" >> /tmp/fake-java.log
+          echo "Done. Times: 1s. Memory = 1Mb"
+          echo "Success: 0 errors, 0 warnings, 0 notes"
+          exit 0
+          EOF
+          cat > /tmp/fakebin/wget <<'EOF'
+          #!/bin/sh
+          echo "$*" >> /tmp/fake-wget.log
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          if [ -n "$out" ]; then echo "fake jar" > "$out"; fi
+          exit 0
+          EOF
+          chmod +x /tmp/fakebin/java /tmp/fakebin/wget
+          echo "/tmp/fakebin" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fsh-resources
+          PATH_TO_EXAMPLES: fsh-examples
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+          JAVA_VALIDATOR_VERSION: '6.3.0'
+      - name: Assert validator download and invocation
+        env:
+          FHIR_VERSION_ENV: ${{ env.FHIR_VERSION }}
+        run: |
+          echo "FHIR_VERSION: $FHIR_VERSION_ENV"
+          echo "--- wget log ---"; cat /tmp/fake-wget.log || true
+          echo "--- java log ---"; cat /tmp/fake-java.log || true
+          if [ "$FHIR_VERSION_ENV" != "4.0.1" ]; then
+            echo "FAIL: expected FHIR_VERSION 4.0.1"
+            exit 1
+          fi
+          if ! grep -q "releases/download/6.3.0/validator_cli.jar" /tmp/fake-wget.log; then
+            echo "FAIL: download URL did not expand JAVA_VALIDATOR_VERSION"
+            exit 1
+          fi
+          CALLS=$(wc -l < /tmp/fake-java.log)
+          if [ "$CALLS" -ne 2 ]; then
+            echo "FAIL: expected 2 validator invocations, got $CALLS"
+            exit 1
+          fi
+          if ! grep -q -- "-version 4.0.1" /tmp/fake-java.log; then
+            echo "FAIL: missing -version 4.0.1"
+            exit 1
+          fi
+          if ! grep -q -- "-ig de.basisprofil.r4#1.4.0" /tmp/fake-java.log; then
+            echo "FAIL: missing dependency -ig"
+            exit 1
+          fi
+          if grep -q "hl7.fhir.r4.core" /tmp/fake-java.log; then
+            echo "FAIL: core package should be filtered out"
+            exit 1
+          fi
+          if ! grep -q -- "-output-style compact" /tmp/fake-java.log; then
+            echo "FAIL: default JAVA_VALIDATION_OPTIONS missing"
+            exit 1
+          fi
+          if ! grep -q "fsh-resources/\*.json" /tmp/fake-java.log || ! grep -q "fsh-examples/\*.json" /tmp/fake-java.log; then
+            echo "FAIL: expected conformance and example paths"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json validator_cli.jar

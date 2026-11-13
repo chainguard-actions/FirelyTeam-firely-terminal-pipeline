@@ -1,0 +1,76 @@
+name: Test Java validation expected fails are tolerated
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up project and failing fake java/wget
+        run: |
+          rm -f sushi-config.yaml /tmp/fake-java-ef.log
+          cat > package.json <<'EOF'
+          {
+            "name": "test",
+            "version": "1.0.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1"
+            }
+          }
+          EOF
+          mkdir -p /tmp/fakebin-ef
+          cat > /tmp/fakebin-ef/java <<'EOF'
+          #!/bin/sh
+          if [ "$1" = "-version" ]; then
+            echo 'openjdk version "17.0.0" 2021-09-14' >&2
+            exit 0
+          fi
+          echo "$*" >> /tmp/fake-java-ef.log
+          echo "Error - simulated validator failure"
+          exit 1
+          EOF
+          cat > /tmp/fakebin-ef/wget <<'EOF'
+          #!/bin/sh
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          if [ -n "$out" ]; then echo "fake jar" > "$out"; fi
+          exit 0
+          EOF
+          chmod +x /tmp/fakebin-ef/java /tmp/fakebin-ef/wget
+          echo "/tmp/fakebin-ef" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fsh-resources
+          PATH_TO_EXAMPLES: fsh-examples
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+      - name: Assert failures were tolerated
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "--- java log ---"; cat /tmp/fake-java-ef.log || true
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success with EXPECTED_FAILS"
+            exit 1
+          fi
+          CALLS=$(wc -l < /tmp/fake-java-ef.log)
+          if [ "$CALLS" -ne 2 ]; then
+            echo "FAIL: expected 2 validator invocations, got $CALLS"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json validator_cli.jar

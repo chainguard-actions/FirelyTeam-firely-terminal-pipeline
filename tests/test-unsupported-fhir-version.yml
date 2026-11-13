@@ -1,0 +1,79 @@
+name: Test unsupported FHIR version warns but continues
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up project and fake java/wget
+        run: |
+          rm -f sushi-config.yaml /tmp/fake-java2.log
+          cat > package.json <<'EOF'
+          {
+            "name": "test",
+            "version": "1.0.0",
+            "fhirVersions": ["9.9.9"],
+            "dependencies": { "hl7.fhir.r4.core": "4.0.1" }
+          }
+          EOF
+          mkdir -p /tmp/fakebin2
+          cat > /tmp/fakebin2/java <<'EOF'
+          #!/bin/sh
+          if [ "$1" = "-version" ]; then
+            echo 'openjdk version "17.0.0" 2021-09-14' >&2
+            exit 0
+          fi
+          echo "$*" >> /tmp/fake-java2.log
+          exit 0
+          EOF
+          cat > /tmp/fakebin2/wget <<'EOF'
+          #!/bin/sh
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          if [ -n "$out" ]; then echo "fake jar" > "$out"; fi
+          exit 0
+          EOF
+          chmod +x /tmp/fakebin2/java /tmp/fakebin2/wget
+          echo "/tmp/fakebin2" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+      - name: Assert continued with unsupported version
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          FHIR_VERSION_ENV: ${{ env.FHIR_VERSION }}
+        run: |
+          echo "outcome: $OUTCOME, FHIR_VERSION: $FHIR_VERSION_ENV"
+          cat /tmp/fake-java2.log || true
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ "$FHIR_VERSION_ENV" != "9.9.9" ]; then
+            echo "FAIL: expected FHIR_VERSION 9.9.9"
+            exit 1
+          fi
+          if ! grep -q -- "-version 9.9.9" /tmp/fake-java2.log; then
+            echo "FAIL: validator not called with -version 9.9.9"
+            exit 1
+          fi
+          if ! grep -q -- "-ig hl7.fhir.r4.core#4.0.1" /tmp/fake-java2.log; then
+            echo "FAIL: core package should not be filtered for unknown version"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json validator_cli.jar

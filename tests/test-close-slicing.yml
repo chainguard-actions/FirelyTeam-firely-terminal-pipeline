@@ -1,0 +1,79 @@
+name: Test close slicing pre-processing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create StructureDefinitions
+        run: |
+          rm -rf slicing-test-resources
+          mkdir -p slicing-test-resources
+          cat > slicing-test-resources/parent.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/parent",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "differential": {
+              "element": [
+                { "id": "Patient.identifier", "path": "Patient.identifier",
+                  "slicing": { "discriminator": [{ "type": "value", "path": "system" }], "rules": "open" } }
+              ]
+            }
+          }
+          EOF
+          cat > slicing-test-resources/child.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/child",
+            "baseDefinition": "http://example.org/StructureDefinition/parent",
+            "differential": {
+              "element": [
+                { "id": "Patient.telecom", "path": "Patient.telecom",
+                  "slicing": { "discriminator": [{ "type": "value", "path": "system" }], "rules": "open" } },
+                { "id": "Patient.name", "path": "Patient.name" }
+              ]
+            }
+          }
+          EOF
+          cat > slicing-test-resources/vs.json <<'EOF'
+          { "resourceType": "ValueSet", "url": "http://example.org/ValueSet/x", "status": "draft" }
+          EOF
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: slicing-test-resources
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert slicing rules
+        run: |
+          CHILD=$(jq -r '.differential.element[0].slicing.rules' slicing-test-resources/child.json)
+          PARENT=$(jq -r '.differential.element[0].slicing.rules' slicing-test-resources/parent.json)
+          NAME_SLICING=$(jq -r '.differential.element[1].slicing // "none"' slicing-test-resources/child.json)
+          echo "child rules: $CHILD"
+          echo "parent rules: $PARENT"
+          echo "child name slicing: $NAME_SLICING"
+          if [ "$CHILD" != "closed" ]; then
+            echo "FAIL: leaf profile slicing should be closed"
+            exit 1
+          fi
+          if [ "$PARENT" != "open" ]; then
+            echo "FAIL: parent profile slicing should remain open"
+            exit 1
+          fi
+          if [ "$NAME_SLICING" != "none" ]; then
+            echo "FAIL: element without slicing should be untouched"
+            exit 1
+          fi
+          if [ "$(jq -r '.status' slicing-test-resources/vs.json)" != "draft" ]; then
+            echo "FAIL: ValueSet should be untouched"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -rf slicing-test-resources

@@ -1,0 +1,64 @@
+name: Test SUSHI options passed through
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up fake npm/sudo/sushi
+        run: |
+          rm -f sushi-config.yaml package.json /tmp/fake-sushi.log /tmp/fake-sudo.log
+          mkdir -p /tmp/fakebin-sushi
+          cat > /tmp/fakebin-sushi/npm <<'EOF'
+          #!/bin/sh
+          if [ "$1" = "--version" ]; then echo "10.0.0"; exit 0; fi
+          exit 0
+          EOF
+          cat > /tmp/fakebin-sushi/sudo <<'EOF'
+          #!/bin/sh
+          echo "$*" >> /tmp/fake-sudo.log
+          exit 0
+          EOF
+          cat > /tmp/fakebin-sushi/sushi <<'EOF'
+          #!/bin/sh
+          echo "$*" >> /tmp/fake-sushi.log
+          exit 0
+          EOF
+          chmod +x /tmp/fakebin-sushi/*
+          echo "/tmp/fakebin-sushi" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fsh-generated/resources
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          SUSHI_ENABLED: 'true'
+          SUSHI_VERSION: '3.5.0'
+          SUSHI_OPTIONS: 'my-fsh-dir --out my-out-dir'
+      - name: Assert sushi invoked with options
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "--- sudo log ---"; cat /tmp/fake-sudo.log || true
+          echo "--- sushi log ---"; cat /tmp/fake-sushi.log || true
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if ! grep -q "npm install -g fsh-sushi@3.5.0" /tmp/fake-sudo.log; then
+            echo "FAIL: expected fsh-sushi@3.5.0 install"
+            exit 1
+          fi
+          if ! grep -qx -- "-v" /tmp/fake-sushi.log; then
+            echo "FAIL: expected sushi -v"
+            exit 1
+          fi
+          if ! grep -qx -- "my-fsh-dir --out my-out-dir" /tmp/fake-sushi.log; then
+            echo "FAIL: SUSHI_OPTIONS not passed through"
+            exit 1
+          fi
+          echo "PASS"
