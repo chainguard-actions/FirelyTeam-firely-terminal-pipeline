@@ -1,0 +1,55 @@
+name: Test optional inputs are inert when validators and SUSHI are disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Record precondition
+        run: |
+          if [ -d fsh-generated ]; then
+            echo "fsh-generated existed before" > /tmp/fsh-pre
+          fi
+          echo "precondition recorded"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: resources
+          PATH_TO_EXAMPLES: examples
+          PATH_TO_QUALITY_CONTROL_RULES: qc/custom
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+          FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
+          SUSHI_OPTIONS: '--out fsh-out-test'
+          SUSHI_ENABLED: 'false'
+          SIMPLIFIER_USERNAME: nobody@example.com
+          SIMPLIFIER_PASSWORD: not-used
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+      - name: Assert action succeeded without running SUSHI or validators
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          REPORT: ${{ steps.action.outputs.report }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -e fsh-out-test ]; then
+            echo "FAIL: SUSHI should not have run (SUSHI_OPTIONS output dir exists)"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not have been downloaded"
+            exit 1
+          fi
+          if [ -n "${FHIR_VERSION:-}" ]; then
+            echo "FAIL: FHIR_VERSION should not be set"
+            exit 1
+          fi
+          if [ -f "$RUNNER_TEMP/fhir-check/validation.json" ]; then
+            echo "FAIL: no QC report should be produced when .NET validation is disabled"
+            exit 1
+          fi
+          echo "PASS"

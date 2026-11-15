@@ -1,0 +1,88 @@
+name: Test close slicing pre-processing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create conformance resources
+        run: |
+          dir="$RUNNER_TEMP/profiles"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          cat > "$dir/parent.json" <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/Parent",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "differential": {
+              "element": [
+                { "id": "Patient.identifier", "path": "Patient.identifier",
+                  "slicing": { "discriminator": [ { "type": "value", "path": "system" } ], "rules": "open" } }
+              ]
+            }
+          }
+          EOF
+          cat > "$dir/child.json" <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/Child",
+            "baseDefinition": "http://example.org/StructureDefinition/Parent",
+            "differential": {
+              "element": [
+                { "id": "Patient.name", "path": "Patient.name" },
+                { "id": "Patient.telecom", "path": "Patient.telecom",
+                  "slicing": { "discriminator": [ { "type": "value", "path": "system" } ], "rules": "open" } }
+              ]
+            }
+          }
+          EOF
+          cat > "$dir/valueset.json" <<'EOF'
+          {
+            "resourceType": "ValueSet",
+            "url": "http://example.org/ValueSet/vs",
+            "differential": { "element": [ { "slicing": { "rules": "open" } } ] }
+          }
+          EOF
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: ${{ runner.temp }}/profiles
+          SIMPLIFIER_USERNAME: nobody@example.com
+          SIMPLIFIER_PASSWORD: not-used
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert slicing was closed only for leaf profiles
+        run: |
+          dir="$RUNNER_TEMP/profiles"
+          child=$(jq -r '.differential.element[] | select(.id=="Patient.telecom") | .slicing.rules' "$dir/child.json")
+          childName=$(jq -c '.differential.element[] | select(.id=="Patient.name")' "$dir/child.json")
+          parent=$(jq -r '.differential.element[0].slicing.rules' "$dir/parent.json")
+          vs=$(jq -r '.differential.element[0].slicing.rules' "$dir/valueset.json")
+          echo "child: $child"
+          echo "child name element: $childName"
+          echo "parent: $parent"
+          echo "valueset: $vs"
+          if [ "$child" != "closed" ]; then
+            echo "FAIL: child profile slicing should be closed"
+            exit 1
+          fi
+          if echo "$childName" | grep -q slicing; then
+            echo "FAIL: element without slicing should not gain a slicing"
+            exit 1
+          fi
+          if [ "$parent" != "open" ]; then
+            echo "FAIL: parent profile (extended by child) should stay open"
+            exit 1
+          fi
+          if [ "$vs" != "open" ]; then
+            echo "FAIL: non-StructureDefinition resource should not be modified"
+            exit 1
+          fi
+          if ls "$dir"/*.tmp >/dev/null 2>&1; then
+            echo "FAIL: leftover temp files"
+            exit 1
+          fi
+          echo "PASS"
