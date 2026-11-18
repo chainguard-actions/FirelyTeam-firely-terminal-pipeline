@@ -1,0 +1,53 @@
+name: Test close slicing pre-processing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Copy slicing fixtures to a temp dir (action edits files in place)
+        run: |
+          rm -rf "$RUNNER_TEMP/slicing"
+          mkdir -p "$RUNNER_TEMP/slicing"
+          cp tests/fixtures/slicing/*.json "$RUNNER_TEMP/slicing/"
+          ls -la "$RUNNER_TEMP/slicing"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: ${{ runner.temp }}/slicing
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert leaf profile slicing was closed
+        run: |
+          D="$RUNNER_TEMP/slicing"
+          CHILD=$(jq -r '.differential.element[] | select(.id=="Patient.telecom") | .slicing.rules' "$D/child.json")
+          echo "child telecom slicing rules: $CHILD"
+          if [ "$CHILD" != "closed" ]; then
+            echo "FAIL: expected child slicing rules 'closed'"
+            exit 1
+          fi
+          NAME_SLICING=$(jq -r '.differential.element[] | select(.id=="Patient.name") | has("slicing")' "$D/child.json")
+          echo "child name has slicing: $NAME_SLICING"
+          if [ "$NAME_SLICING" != "false" ]; then
+            echo "FAIL: element without slicing should not gain slicing"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert parent profile (extended by child) left open
+        run: |
+          D="$RUNNER_TEMP/slicing"
+          PARENT=$(jq -r '.differential.element[] | select(.id=="Patient.identifier") | .slicing.rules' "$D/parent.json")
+          echo "parent identifier slicing rules: $PARENT"
+          if [ "$PARENT" != "open" ]; then
+            echo "FAIL: expected parent slicing rules to stay 'open'"
+            exit 1
+          fi
+          if ! cmp -s "$D/example-patient.json" tests/fixtures/slicing/example-patient.json; then
+            echo "FAIL: non-StructureDefinition resource was modified"
+            exit 1
+          fi
+          echo "PASS"

@@ -1,0 +1,28 @@
+{
+  "resourceType": "StructureDefinition",
+  "url": "http://example.org/fhir/StructureDefinition/child-patient",
+  "name": "ChildPatient",
+  "status": "draft",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://example.org/fhir/StructureDefinition/parent-patient",
+  "derivation": "constraint",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient.telecom",
+        "path": "Patient.telecom",
+        "slicing": {
+          "discriminator": [{ "type": "value", "path": "system" }],
+          "rules": "open"
+        }
+      },
+      {
+        "id": "Patient.name",
+        "path": "Patient.name",
+        "min": 1
+      }
+    ]
+  }
+}

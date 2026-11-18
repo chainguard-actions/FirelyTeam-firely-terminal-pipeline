@@ -1,0 +1,38 @@
+name: Test all validation disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/slicing
+          SIMPLIFIER_USERNAME: unused@example.com
+          SIMPLIFIER_PASSWORD: unused
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+      - name: Assert action succeeded and did not touch fixtures or create package.json
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -f package.json ]; then
+            echo "FAIL: package.json should not have been generated"
+            exit 1
+          fi
+          if [ -f validator_cli.jar ]; then
+            echo "FAIL: Java validator should not have been downloaded"
+            exit 1
+          fi
+          if ! git diff --quiet -- tests/fixtures/slicing; then
+            echo "FAIL: fixtures modified although CLOSE_SLICING_FOR_VALIDATION=false"
+            exit 1
+          fi
+          echo "PASS"
