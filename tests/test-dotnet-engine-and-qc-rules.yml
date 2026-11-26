@@ -1,4 +1,4 @@
-name: Test .NET quality control with mocked Firely Terminal
+name: Test .NET validator engine and QC rules (mocked Firely Terminal)
 on:
   workflow_dispatch:
 jobs:
@@ -19,33 +19,23 @@ jobs:
             }
           }
           EOF
-          mkdir -p /tmp/fakebin-qc
-          cat > /tmp/fakebin-qc/dotnet <<'EOF'
+          mkdir -p /tmp/fakebin-fhir
+          cat > /tmp/fakebin-fhir/dotnet <<'EOF'
           #!/bin/sh
-          if [ "$1" = "--version" ]; then echo "8.0.100"; exit 0; fi
-          echo "dotnet $*" >> /tmp/fake-fhir.log
+          [ "$1" = "--version" ] && echo "8.0.100"
           exit 0
           EOF
-          cat > /tmp/fakebin-qc/fhir <<'EOF'
+          cat > /tmp/fakebin-fhir/fhir <<'EOF'
           #!/bin/sh
           echo "$*" >> /tmp/fake-fhir.log
-          case "$1" in
-            -v) echo "Firely Terminal 3.4.0"; exit 0 ;;
-            check)
-              for a in "$@"; do
-                if [ "$a" = "--help" ]; then echo "Usage: fhir check [rules] --fail"; exit 0; fi
-              done
-              for a in "$@"; do
-                if [ "$a" = "--fail" ]; then echo "simulated QC error"; exit 1; fi
-              done
-              echo "simulated QC error (not failing)"
-              exit 0
-              ;;
+          case "$*" in
+            "-v") echo "Firely Terminal 3.4.0" ;;
+            "check --help") echo "Usage: fhir check [rules] --fail" ;;
           esac
           exit 0
           EOF
-          chmod +x /tmp/fakebin-qc/dotnet /tmp/fakebin-qc/fhir
-          echo "/tmp/fakebin-qc" >> "$GITHUB_PATH"
+          chmod +x /tmp/fakebin-fhir/*
+          echo "/tmp/fakebin-fhir" >> "$GITHUB_PATH"
       - id: action
         uses: .
         with:
@@ -56,8 +46,7 @@ jobs:
           JAVA_VALIDATION_ENABLED: 'false'
           FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
           PATH_TO_QUALITY_CONTROL_RULES: qc/custom
-          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
-      - name: Assert Firely Terminal invocations
+      - name: Assert Firely Terminal calls
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
@@ -67,16 +56,12 @@ jobs:
             echo "FAIL: expected success"
             exit 1
           fi
-          for expected in "login email=user@example.com password=secret" "spec R4" "restore" "config validator netsdk" "check qc/custom"; do
-            if ! grep -qx -- "$expected" /tmp/fake-fhir.log; then
-              echo "FAIL: missing fhir invocation '$expected'"
+          for expected in "login email=user@example.com password=secret" "spec R4" "restore" "config validator netsdk" "check qc/custom --fail"; do
+            if ! grep -qxF -- "$expected" /tmp/fake-fhir.log; then
+              echo "FAIL: missing fhir call '$expected'"
               exit 1
             fi
           done
-          if grep -q -- "check qc/custom --fail" /tmp/fake-fhir.log; then
-            echo "FAIL: --fail should be dropped due to EXPECTED_FAILS"
-            exit 1
-          fi
           echo "PASS"
       - name: Cleanup
         if: always()

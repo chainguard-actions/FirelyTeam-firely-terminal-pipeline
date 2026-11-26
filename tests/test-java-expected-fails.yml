@@ -1,4 +1,4 @@
-name: Test Java validation expected fails are tolerated
+name: Test Java validation expected fails
 on:
   workflow_dispatch:
 jobs:
@@ -27,7 +27,7 @@ jobs:
             exit 0
           fi
           echo "$*" >> /tmp/fake-java-ef.log
-          echo "Error - simulated validator failure"
+          echo "Error - simulated validator bug"
           exit 1
           EOF
           cat > /tmp/fakebin-ef/wget <<'EOF'
@@ -55,7 +55,7 @@ jobs:
           DOTNET_VALIDATION_ENABLED: 'false'
           JAVA_VALIDATION_ENABLED: 'true'
           EXPECTED_FAILS: VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
-      - name: Assert failures were tolerated
+      - name: Assert failing validator was tolerated
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
