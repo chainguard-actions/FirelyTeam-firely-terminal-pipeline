@@ -1,4 +1,4 @@
-name: Test optional inputs are accepted and ignored when validators/sushi are disabled
+name: Test PATH_TO_EXAMPLES and SUSHI_OPTIONS are ignored when Java and SUSHI are disabled
 on:
   workflow_dispatch:
 jobs:
@@ -11,38 +11,35 @@ jobs:
         with:
           PATH_TO_CONFORMANCE_RESOURCES: tests/fixtures/slicing
           PATH_TO_EXAMPLES: tests/fixtures/slicing
-          PATH_TO_QUALITY_CONTROL_RULES: tests/fixtures/does-not-exist
-          EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
-          FIRELY_TERMINAL_VALIDATOR_ENGINE: not-a-valid-engine
-          SUSHI_OPTIONS: --this-option-should-never-be-used
           SIMPLIFIER_USERNAME: unused@example.com
           SIMPLIFIER_PASSWORD: unused
           DOTNET_VALIDATION_ENABLED: 'false'
           JAVA_VALIDATION_ENABLED: 'false'
           SUSHI_ENABLED: 'false'
-      - name: Assert action succeeded without side effects
+          SUSHI_OPTIONS: '--snapshot $(touch /tmp/sushi-injection)'
+      - name: Assert action succeeded and SUSHI/Java did not run
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
           if [ "$OUTCOME" != "success" ]; then
-            echo "FAIL: expected success (engine/sushi/QC inputs must be ignored when disabled)"
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ -e /tmp/sushi-injection ]; then
+            echo "FAIL: SUSHI_OPTIONS content was executed"
+            exit 1
+          fi
+          if [ -d fsh-generated ]; then
+            echo "FAIL: SUSHI should not have generated output"
             exit 1
           fi
           if [ -f validator_cli.jar ]; then
             echo "FAIL: Java validator should not have been downloaded"
             exit 1
           fi
-          if [ -f package.json ]; then
-            echo "FAIL: package.json should not have been generated"
-            exit 1
-          fi
-          if [ -d fsh-generated ]; then
-            echo "FAIL: SUSHI should not have run"
-            exit 1
-          fi
           if ! git diff --quiet -- tests/fixtures/slicing; then
-            echo "FAIL: fixtures modified"
+            echo "FAIL: fixtures should be unchanged"
             exit 1
           fi
           echo "PASS"

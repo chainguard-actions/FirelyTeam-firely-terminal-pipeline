@@ -301,8 +301,8 @@ runs:
           fi
           
           echo "Detected FHIR version: $fhirVersion"
-          fhirVersion=$(printf '%s' "$fhirVersion" | tr -d '\n\r')
-          echo "FHIR_VERSION=$fhirVersion" >> "$GITHUB_ENV"
+          safeFhirVersion=$(printf '%s' "$fhirVersion" | tr -d '\n\r')
+          echo "FHIR_VERSION=$safeFhirVersion" >> "$GITHUB_ENV"
         else
           echo "Skipping FHIR version detection (no validation enabled)"
         fi
@@ -322,7 +322,7 @@ runs:
           
           # Check if detected version is supported
           supportedVersion=false
-          for supportedFhirVersion in ${supportedVersions[@]}; do
+          for supportedFhirVersion in "${supportedVersions[@]}"; do
             if [[ "$FHIR_VERSION" = "$supportedFhirVersion" ]]; then
               supportedVersion=true
               break
@@ -399,18 +399,18 @@ runs:
         # current, dev, latest and version ranges resolve to new content over time; a cache keyed on package.json would never refresh them
         volatileDependencies=$(jq -r '(.dependencies // {}), (.devDependencies // {}) | to_entries[] | select(.value | test("^(current|dev|latest)|[*^~<>| ]|(^|[.])x([.]|$)")) | .key + "#" + .value' package.json)
         if [[ -n "$volatileDependencies" ]]; then
-          echo "Not caching FHIR packages, these dependencies have no fixed version: $(echo $volatileDependencies)"
+          echo "Not caching FHIR packages, these dependencies have no fixed version: ${volatileDependencies//$'\n'/ }"
           exit 0
         fi
-        cacheLocation="$(fhir cache location --path)"
-        cacheLocation="$(printf '%s' "$cacheLocation" | tr -d '\n\r')"
-        echo "path=$cacheLocation" >> "$GITHUB_OUTPUT"
+        rawCachePath="$(fhir cache location --path)"
+        safeCachePath=$(printf '%s' "$rawCachePath" | tr -d '\n\r')
+        echo "path=$safeCachePath" >> "$GITHUB_OUTPUT"
         # The installed version, not the input: an fhir already on the runner is reused whatever FIRELY_TERMINAL_VERSION says
         installedFirelyTerminalVersion=$(fhir -v | awk '/^Firely Terminal/ {print $3}')
-        packageHash="$(sha256sum package.json | cut -c1-16)" || true
-        cacheKey="fhir-packages-${RUNNER_OS}-ft${installedFirelyTerminalVersion:-$FIRELY_TERMINAL_VERSION}-zts${INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED}-${packageHash}"
-        cacheKey="$(printf '%s' "$cacheKey" | tr -d '\n\r')"
-        echo "key=$cacheKey" >> "$GITHUB_OUTPUT"
+        packageJsonHash="$(sha256sum package.json | cut -c1-16)" || true
+        rawCacheKey="fhir-packages-${RUNNER_OS}-ft${installedFirelyTerminalVersion:-$FIRELY_TERMINAL_VERSION}-zts${INPUT_TERMINOLOGY_SERVICE_BFARM_ENABLED}-${packageJsonHash}"
+        safeCacheKey=$(printf '%s' "$rawCacheKey" | tr -d '\n\r')
+        echo "key=$safeCacheKey" >> "$GITHUB_OUTPUT"
       shell: bash
       env:
         FIRELY_TERMINAL_VERSION: ${{ inputs.FIRELY_TERMINAL_VERSION }}
@@ -526,7 +526,7 @@ runs:
               
               packageFile="${packageName}-${packageVersion}.tgz"
               packageDownloadResponseCode=$(curl -H "Authorization: Bearer $ztsAccessToken" \
-                https://terminologien.bfarm.de/packages/$packageName/$packageVersion \
+                "https://terminologien.bfarm.de/packages/$packageName/$packageVersion" \
                 -s -o "$packageFile" -w "%{http_code}")
                 
               if [[ "$packageDownloadResponseCode" == 2* && -s "$packageFile" ]]; then
@@ -742,8 +742,7 @@ runs:
           set -e
 
           if [ -f "$REPORT" ]; then
-            safe_report=$(printf '%s' "$REPORT" | tr -d '\n\r')
-            echo "report=$safe_report" >> "$GITHUB_OUTPUT"
+            echo "report=$REPORT" >> "$GITHUB_OUTPUT"
             # Without issues, Firely Terminal writes a Bundle without entries, which the renderer rejects
             # ponytail: drop this once the renderer accepts a Bundle without entries
             if jq -e '(.entry // []) | length > 0' "$REPORT" > /dev/null; then
@@ -817,11 +816,9 @@ runs:
           CHECK_JAVA_VERSION=$(java -version 2>&1 | head -1 | cut -d'"' -f2)
           echo "JAVA_VERSION: $CHECK_JAVA_VERSION"
           echo "JAVA_VALIDATOR_VERSION: $JAVA_VALIDATOR_VERSION"
-          # Substitute the $JAVA_VALIDATOR_VERSION placeholder literally instead of eval'ing the input
-          placeholderBraced='${JAVA_VALIDATOR_VERSION}'
-          placeholderPlain='$JAVA_VALIDATOR_VERSION'
-          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//"$placeholderBraced"/$JAVA_VALIDATOR_VERSION}"
-          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//"$placeholderPlain"/$JAVA_VALIDATOR_VERSION}"
+          # Substitute the $JAVA_VALIDATOR_VERSION placeholder without eval (no command execution from the input)
+          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//\$\{JAVA_VALIDATOR_VERSION\}/"$JAVA_VALIDATOR_VERSION"}"
+          JAVA_VALIDATOR_DOWNLOAD_LOCATION="${JAVA_VALIDATOR_DOWNLOAD_LOCATION//\$JAVA_VALIDATOR_VERSION/"$JAVA_VALIDATOR_VERSION"}"
           echo "JAVA_VALIDATOR_DOWNLOAD_LOCATION: $JAVA_VALIDATOR_DOWNLOAD_LOCATION"
 
           wget -q "$JAVA_VALIDATOR_DOWNLOAD_LOCATION" -O validator_cli.jar
@@ -867,17 +864,17 @@ runs:
           echo "IG_DEPENDENCIES: $IG_DEPENDENCIES"
           
           # shellcheck disable=SC2206
-          conformancePaths=($INPUT_PATH_TO_CONFORMANCE_RESOURCES)   # same split and glob as upstream's unquoted expansion
+          CONFORMANCE_PATHS=($INPUT_PATH_TO_CONFORMANCE_RESOURCES)   # same split and glob as upstream's unquoted expansion
           # shellcheck disable=SC2206
-          javaOptions=($INPUT_JAVA_VALIDATION_OPTIONS)              # same split and glob as upstream's unquoted expansion
-          
+          JAVA_OPTS=($INPUT_JAVA_VALIDATION_OPTIONS)   # same split and glob as upstream's unquoted expansion
+
           LOCAL_IG_PARAMETERS=()
-          for p in "${conformancePaths[@]}"; # Get combined path to conformance resources, we want to provide all other directories as context for the current validation
+          for p in "${CONFORMANCE_PATHS[@]}"; # Get combined path to conformance resources, we want to provide all other directories as context for the current validation
           do  
             LOCAL_IG_PARAMETERS+=(-ig "$GITHUB_WORKSPACE/$p")
           done
           
-          for p in "${conformancePaths[@]}"; 
+          for p in "${CONFORMANCE_PATHS[@]}"; 
           do
           
             # Ensure directory ends with "/"
@@ -885,12 +882,14 @@ runs:
               p="$p/"
             fi
             
-            UNESCPAED_IG_DEPENDENCIES=$(echo $IG_DEPENDENCIES | tr -d '"')
+            UNESCPAED_IG_DEPENDENCIES=$(printf '%s\n' "$IG_DEPENDENCIES" | tr -d '"')
+            # shellcheck disable=SC2206
+            IG_DEP_ARGS=($UNESCPAED_IG_DEPENDENCIES)
             
             if printf '%s\n' "$INPUT_EXPECTED_FAILS" | grep -w -q VALIDATION_CONFORMANCE_JAVA; then
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${javaOptions[@]}" $UNESCPAED_IG_DEPENDENCIES "${LOCAL_IG_PARAMETERS[@]}" || true)
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${LOCAL_IG_PARAMETERS[@]}" || true)
             else
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${javaOptions[@]}" $UNESCPAED_IG_DEPENDENCIES "${LOCAL_IG_PARAMETERS[@]}")
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${LOCAL_IG_PARAMETERS[@]}")
             fi
 
             javaValidatorOutput=$(echo "$javaValidatorOutput" | sed -E "
@@ -942,19 +941,19 @@ runs:
             IG_DEPENDENCIES=$(jq -r '(.dependencies + .["zts-dependencies"]) | to_entries | map("-ig " + .key + "#" + .value) | join(" ")' package.json)
           fi
           # shellcheck disable=SC2206
-          conformancePaths=($INPUT_PATH_TO_CONFORMANCE_RESOURCES)   # same split and glob as upstream's unquoted expansion
+          CONFORMANCE_PATHS=($INPUT_PATH_TO_CONFORMANCE_RESOURCES)   # same split and glob as upstream's unquoted expansion
           # shellcheck disable=SC2206
-          examplePaths=($PATH_TO_EXAMPLES)                          # same split and glob as upstream's unquoted expansion
+          EXAMPLE_PATHS=($PATH_TO_EXAMPLES)   # same split and glob as upstream's unquoted expansion
           # shellcheck disable=SC2206
-          javaOptions=($INPUT_JAVA_VALIDATION_OPTIONS)              # same split and glob as upstream's unquoted expansion
-          
+          JAVA_OPTS=($INPUT_JAVA_VALIDATION_OPTIONS)   # same split and glob as upstream's unquoted expansion
+
           COMBINED_IG_PARAMETERS=()
-          for p in "${conformancePaths[@]}"; # Get combined path to conformance resources, we want to validate against the current version of the conformance resources
+          for p in "${CONFORMANCE_PATHS[@]}"; # Get combined path to conformance resources, we want to validate against the current version of the conformance resources
           do  
             COMBINED_IG_PARAMETERS+=(-ig "$GITHUB_WORKSPACE/$p")
           done
           
-          for p in "${examplePaths[@]}"; 
+          for p in "${EXAMPLE_PATHS[@]}"; 
           do
             
             # Ensure directory ends with "/"
@@ -962,12 +961,14 @@ runs:
               p="$p/"
             fi
           
-            UNESCPAED_IG_DEPENDENCIES=$(echo $IG_DEPENDENCIES | tr -d '"')
+            UNESCPAED_IG_DEPENDENCIES=$(printf '%s\n' "$IG_DEPENDENCIES" | tr -d '"')
+            # shellcheck disable=SC2206
+            IG_DEP_ARGS=($UNESCPAED_IG_DEPENDENCIES)
             
             if printf '%s\n' "$INPUT_EXPECTED_FAILS" | grep -w -q VALIDATION_EXAMPLES_JAVA; then
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${javaOptions[@]}" $UNESCPAED_IG_DEPENDENCIES "${COMBINED_IG_PARAMETERS[@]}" || true)
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${COMBINED_IG_PARAMETERS[@]}" || true)
             else
-              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${javaOptions[@]}" $UNESCPAED_IG_DEPENDENCIES "${COMBINED_IG_PARAMETERS[@]}")
+              javaValidatorOutput=$(java -jar validator_cli.jar "$GITHUB_WORKSPACE/$p"*.xml "$GITHUB_WORKSPACE/$p"*.json -version "$FHIR_VERSION" "${JAVA_OPTS[@]}" "${IG_DEP_ARGS[@]}" "${COMBINED_IG_PARAMETERS[@]}")
             fi
 
             javaValidatorOutput=$(echo "$javaValidatorOutput" | sed -E "
