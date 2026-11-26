@@ -755,7 +755,7 @@ runs:
     - name: Render Quality Control report
       if: always() && steps.qc.outputs.report != '' && inputs.REPORT_RENDERER_ENABLED == 'true'
       continue-on-error: true
-      uses: patrick-werner/validation-outcome-markdown-renderer@09f430c50c24c4d8666158efa4922dd300de6b1b # v1.5.0
+      uses: chainguard-actions/patrick-werner-validation-outcome-markdown-renderer@73dfab492c4e6c9593810296e48ae3f0b78dd6d1 # v1.5.0
       with:
         bundle-file: ${{ steps.qc.outputs.report }}
         include: warnings
