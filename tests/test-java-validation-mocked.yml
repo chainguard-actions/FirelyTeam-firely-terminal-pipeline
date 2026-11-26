@@ -1,0 +1,135 @@
+name: Test Java validation with mocked java and wget
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up project files and fake java/wget
+        run: |
+          rm -f sushi-config.yaml validator_cli.jar /tmp/java-calls.log /tmp/wget-calls.log
+          cat > package.json <<'EOF'
+          {
+            "name": "test-project",
+            "version": "0.1.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1",
+              "de.basisprofil.r4": "1.5.0"
+            }
+          }
+          EOF
+          mkdir -p fhir-conformance fhir-examples
+          echo '{"resourceType":"ValueSet","url":"http://example.org/ValueSet/vs","status":"draft"}' > fhir-conformance/vs.json
+          echo '{"resourceType":"Patient","id":"p1"}' > fhir-examples/patient.json
+
+          FAKEBIN="$RUNNER_TEMP/fakebin"
+          mkdir -p "$FAKEBIN"
+          cat > "$FAKEBIN/java" <<'EOF'
+          #!/bin/sh
+          if [ "$1" = "-version" ]; then
+            echo 'openjdk version "17.0.99" 2024-01-01' >&2
+            exit 0
+          fi
+          echo "$*" >> /tmp/java-calls.log
+          echo "Success: 0 errors, 0 warnings, 0 notes - All OK"
+          exit 0
+          EOF
+          cat > "$FAKEBIN/wget" <<'EOF'
+          #!/bin/sh
+          # Fake wget: honor -O FILE, otherwise print to stdout
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O|--output-document) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          echo "$*" >> /tmp/wget-calls.log
+          if [ -n "$out" ] && [ "$out" != "-" ]; then
+            echo "FAKE-JAR" > "$out"
+          else
+            echo "FAKE-JAR"
+          fi
+          exit 0
+          EOF
+          chmod +x "$FAKEBIN/java" "$FAKEBIN/wget"
+          echo "$FAKEBIN" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-conformance
+          PATH_TO_EXAMPLES: fhir-examples
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: dummy-password
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+          JAVA_VALIDATOR_VERSION: '6.5.0'
+      - name: Assert FHIR version detected
+        run: |
+          echo "FHIR_VERSION: ${FHIR_VERSION:-}"
+          echo "USE_PACKAGE_JSON: ${USE_PACKAGE_JSON:-}"
+          echo "NEED_SUSHI_CONVERSION: ${NEED_SUSHI_CONVERSION:-}"
+          if [ "${FHIR_VERSION:-}" != "4.0.1" ]; then
+            echo "FAIL: expected FHIR_VERSION=4.0.1"
+            exit 1
+          fi
+          if [ "${USE_PACKAGE_JSON:-}" != "true" ] || [ "${NEED_SUSHI_CONVERSION:-}" != "false" ]; then
+            echo "FAIL: expected package.json strategy"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert validator downloaded from expanded URL
+        run: |
+          echo "wget calls:"; cat /tmp/wget-calls.log || true
+          if [ "$(cat validator_cli.jar 2>/dev/null)" != "FAKE-JAR" ]; then
+            echo "FAIL: validator_cli.jar not downloaded"
+            exit 1
+          fi
+          if ! grep -q "releases/download/6.5.0/validator_cli.jar" /tmp/wget-calls.log; then
+            echo "FAIL: download URL did not expand JAVA_VALIDATOR_VERSION"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Assert java validator invocations
+        run: |
+          echo "java calls:"; cat /tmp/java-calls.log || true
+          CALLS=$(wc -l < /tmp/java-calls.log)
+          if [ "$CALLS" -ne 2 ]; then
+            echo "FAIL: expected 2 java validator calls (conformance + examples), got $CALLS"
+            exit 1
+          fi
+          if [ "$(grep -c -- '-jar validator_cli.jar' /tmp/java-calls.log)" -ne 2 ]; then
+            echo "FAIL: validator jar not used"
+            exit 1
+          fi
+          if [ "$(grep -c -- '-version 4.0.1' /tmp/java-calls.log)" -ne 2 ]; then
+            echo "FAIL: -version 4.0.1 missing"
+            exit 1
+          fi
+          if [ "$(grep -c -- '-output-style compact' /tmp/java-calls.log)" -ne 2 ]; then
+            echo "FAIL: default JAVA_VALIDATION_OPTIONS missing"
+            exit 1
+          fi
+          if [ "$(grep -c -- '-ig de.basisprofil.r4#1.5.0' /tmp/java-calls.log)" -ne 2 ]; then
+            echo "FAIL: dependency -ig missing"
+            exit 1
+          fi
+          if grep -q 'hl7.fhir.r4.core' /tmp/java-calls.log; then
+            echo "FAIL: core package should be filtered out"
+            exit 1
+          fi
+          if ! grep -q "/fhir-conformance/" /tmp/java-calls.log || ! grep -q "/fhir-examples/" /tmp/java-calls.log; then
+            echo "FAIL: expected conformance and example paths"
+            exit 1
+          fi
+          if [ "$(grep -c -- "-ig $GITHUB_WORKSPACE/fhir-conformance" /tmp/java-calls.log)" -ne 2 ]; then
+            echo "FAIL: local conformance -ig missing"
+            exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json validator_cli.jar

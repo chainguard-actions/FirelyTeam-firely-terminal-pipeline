@@ -1,0 +1,79 @@
+name: Test closing slicing pre-processing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create conformance resources
+        run: |
+          rm -rf fhir-slicing
+          mkdir -p fhir-slicing
+          cat > fhir-slicing/parent.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/parent",
+            "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+            "differential": {
+              "element": [
+                { "id": "Patient.identifier", "path": "Patient.identifier",
+                  "slicing": { "discriminator": [{ "type": "value", "path": "system" }], "rules": "open" } }
+              ]
+            }
+          }
+          EOF
+          cat > fhir-slicing/child.json <<'EOF'
+          {
+            "resourceType": "StructureDefinition",
+            "url": "http://example.org/StructureDefinition/child",
+            "baseDefinition": "http://example.org/StructureDefinition/parent",
+            "differential": {
+              "element": [
+                { "id": "Patient.name", "path": "Patient.name",
+                  "slicing": { "discriminator": [{ "type": "value", "path": "use" }], "rules": "open" } },
+                { "id": "Patient.gender", "path": "Patient.gender" }
+              ]
+            }
+          }
+          EOF
+          cat > fhir-slicing/valueset.json <<'EOF'
+          { "resourceType": "ValueSet", "url": "http://example.org/ValueSet/vs", "status": "draft" }
+          EOF
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-slicing
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: dummy-password
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'false'
+          CLOSE_SLICING_FOR_VALIDATION: 'true'
+      - name: Assert slicing rules
+        run: |
+          CHILD=$(jq -r '.differential.element[0].slicing.rules' fhir-slicing/child.json)
+          PARENT=$(jq -r '.differential.element[0].slicing.rules' fhir-slicing/parent.json)
+          GENDER=$(jq -c '.differential.element[1]' fhir-slicing/child.json)
+          VS=$(jq -r '.resourceType' fhir-slicing/valueset.json)
+          echo "child: $CHILD parent: $PARENT gender: $GENDER vs: $VS"
+          if [ "$CHILD" != "closed" ]; then
+            echo "FAIL: leaf profile slicing should be closed"
+            exit 1
+          fi
+          if [ "$PARENT" != "open" ]; then
+            echo "FAIL: parent profile (extended by child) should remain open"
+            exit 1
+          fi
+          if echo "$GENDER" | grep -q slicing; then
+            echo "FAIL: non-sliced element should not get slicing"
+            exit 1
+          fi
+          if [ "$VS" != "ValueSet" ]; then
+            echo "FAIL: ValueSet file corrupted"
+            exit 1
+          fi
+          if ls fhir-slicing/*.tmp >/dev/null 2>&1; then
+            echo "FAIL: leftover tmp files"
+            exit 1
+          fi
+          echo "PASS"

@@ -1,0 +1,83 @@
+name: Test Java EXPECTED_FAILS tolerates failing validator
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up project files and failing fake java/wget
+        run: |
+          rm -f sushi-config.yaml validator_cli.jar /tmp/java-fail-calls.log
+          cat > package.json <<'EOF'
+          {
+            "name": "test-project",
+            "version": "0.1.0",
+            "fhirVersions": ["4.0.1"],
+            "dependencies": {
+              "hl7.fhir.r4.core": "4.0.1"
+            }
+          }
+          EOF
+          mkdir -p fhir-conformance fhir-examples
+          echo '{"resourceType":"ValueSet","url":"http://example.org/ValueSet/vs","status":"draft"}' > fhir-conformance/vs.json
+          echo '{"resourceType":"Patient","id":"p1"}' > fhir-examples/patient.json
+
+          FAKEBIN="$RUNNER_TEMP/fakebin-javafail"
+          mkdir -p "$FAKEBIN"
+          cat > "$FAKEBIN/java" <<'EOF'
+          #!/bin/sh
+          if [ "$1" = "-version" ]; then
+            echo 'openjdk version "17.0.99" 2024-01-01' >&2
+            exit 0
+          fi
+          echo "$*" >> /tmp/java-fail-calls.log
+          echo "Error - simulated validator bug"
+          exit 1
+          EOF
+          cat > "$FAKEBIN/wget" <<'EOF'
+          #!/bin/sh
+          out=""
+          prev=""
+          for arg in "$@"; do
+            case "$prev" in
+              -O|--output-document) out="$arg" ;;
+            esac
+            prev="$arg"
+          done
+          if [ -n "$out" ] && [ "$out" != "-" ]; then
+            echo "FAKE-JAR" > "$out"
+          else
+            echo "FAKE-JAR"
+          fi
+          exit 0
+          EOF
+          chmod +x "$FAKEBIN/java" "$FAKEBIN/wget"
+          echo "$FAKEBIN" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-conformance
+          PATH_TO_EXAMPLES: fhir-examples
+          SIMPLIFIER_USERNAME: test@example.com
+          SIMPLIFIER_PASSWORD: dummy-password
+          DOTNET_VALIDATION_ENABLED: 'false'
+          JAVA_VALIDATION_ENABLED: 'true'
+          EXPECTED_FAILS: VALIDATION_CONFORMANCE_JAVA VALIDATION_EXAMPLES_JAVA
+      - name: Assert action succeeded despite failing validator
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "java calls:"; cat /tmp/java-fail-calls.log || true
+          if [ "$OUTCOME" != "success" ]; then
+            echo "FAIL: expected success with EXPECTED_FAILS"; exit 1
+          fi
+          CALLS=$(wc -l < /tmp/java-fail-calls.log)
+          if [ "$CALLS" -ne 2 ]; then
+            echo "FAIL: expected 2 java calls, got $CALLS"; exit 1
+          fi
+          echo "PASS"
+      - name: Cleanup
+        if: always()
+        run: rm -f package.json validator_cli.jar
