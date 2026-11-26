@@ -1,4 +1,4 @@
-name: Test Java EXPECTED_FAILS tolerates failing validator
+name: Test EXPECTED_FAILS tolerates failing Java validator
 on:
   workflow_dispatch:
 jobs:
@@ -6,9 +6,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Set up project files and failing fake java/wget
+      - name: Set up project files and failing fake java / fake wget
         run: |
-          rm -f sushi-config.yaml validator_cli.jar /tmp/java-fail-calls.log
+          rm -f sushi-config.yaml validator_cli.jar /tmp/java-calls.log
           cat > package.json <<'EOF'
           {
             "name": "test-project",
@@ -23,7 +23,7 @@ jobs:
           echo '{"resourceType":"ValueSet","url":"http://example.org/ValueSet/vs","status":"draft"}' > fhir-conformance/vs.json
           echo '{"resourceType":"Patient","id":"p1"}' > fhir-examples/patient.json
 
-          FAKEBIN="$RUNNER_TEMP/fakebin-javafail"
+          FAKEBIN="$RUNNER_TEMP/fakebin"
           mkdir -p "$FAKEBIN"
           cat > "$FAKEBIN/java" <<'EOF'
           #!/bin/sh
@@ -31,8 +31,8 @@ jobs:
             echo 'openjdk version "17.0.99" 2024-01-01' >&2
             exit 0
           fi
-          echo "$*" >> /tmp/java-fail-calls.log
-          echo "Error - simulated validator bug"
+          echo "$*" >> /tmp/java-calls.log
+          echo "Error: 1 errors, 0 warnings, 0 notes"
           exit 1
           EOF
           cat > "$FAKEBIN/wget" <<'EOF'
@@ -69,13 +69,15 @@ jobs:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
-          echo "java calls:"; cat /tmp/java-fail-calls.log || true
+          echo "java calls:"; cat /tmp/java-calls.log || true
           if [ "$OUTCOME" != "success" ]; then
-            echo "FAIL: expected success with EXPECTED_FAILS"; exit 1
+            echo "FAIL: expected success with EXPECTED_FAILS"
+            exit 1
           fi
-          CALLS=$(wc -l < /tmp/java-fail-calls.log)
+          CALLS=$(wc -l < /tmp/java-calls.log)
           if [ "$CALLS" -ne 2 ]; then
-            echo "FAIL: expected 2 java calls, got $CALLS"; exit 1
+            echo "FAIL: expected 2 java validator calls, got $CALLS"
+            exit 1
           fi
           echo "PASS"
       - name: Cleanup

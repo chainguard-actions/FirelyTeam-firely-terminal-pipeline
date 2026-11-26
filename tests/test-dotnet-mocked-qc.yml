@@ -1,4 +1,4 @@
-name: Test .NET validation (mocked fhir) with engine, QC rules and EXPECTED_FAILS
+name: Test .NET validation with mocked Firely Terminal (engine, QC rules, expected fails)
 on:
   workflow_dispatch:
 jobs:
@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Set up project files and fake dotnet/fhir
+      - name: Set up project files and fake dotnet / fhir
         run: |
           rm -f sushi-config.yaml /tmp/fhir-calls.log
           cat > package.json <<'EOF'
@@ -15,14 +15,14 @@ jobs:
             "version": "0.1.0",
             "fhirVersions": ["4.0.1"],
             "dependencies": {
-              "de.basisprofil.r4": "1.5.0"
+              "hl7.fhir.r4.core": "4.0.1"
             }
           }
           EOF
           mkdir -p fhir-conformance
           echo '{"resourceType":"ValueSet","url":"http://example.org/ValueSet/vs","status":"draft"}' > fhir-conformance/vs.json
 
-          FAKEBIN="$RUNNER_TEMP/fakebin-dotnet"
+          FAKEBIN="$RUNNER_TEMP/fakebin"
           mkdir -p "$FAKEBIN"
           cat > "$FAKEBIN/dotnet" <<'EOF'
           #!/bin/sh
@@ -32,19 +32,18 @@ jobs:
           EOF
           cat > "$FAKEBIN/fhir" <<'EOF'
           #!/bin/sh
-          echo "$*" >> /tmp/fhir-calls.log
+          echo "fhir $*" >> /tmp/fhir-calls.log
           case "$1" in
-            -v) echo "Firely Terminal 4.0.0"; exit 0 ;;
+            -v) echo "Firely Terminal 3.9.9"; exit 0 ;;
             check)
-              if [ "$2" = "--help" ]; then
-                echo "Usage: fhir check [rules] --output <file> --failOn <severity>"
-                exit 0
-              fi
-              # Simulate validation errors: fail only when --failOn is passed
+              # Old-style help without --failOn: no report produced
               for a in "$@"; do
-                if [ "$a" = "--failOn" ]; then echo "Validation errors found"; exit 1; fi
+                if [ "$a" = "--help" ]; then echo "Usage: fhir check [rules] --fail"; exit 0; fi
               done
-              echo "Validation errors found (not failing)"
+              for a in "$@"; do
+                if [ "$a" = "--fail" ]; then echo "QC found errors"; exit 1; fi
+              done
+              echo "QC found errors (not failing)"
               exit 0
               ;;
           esac
@@ -63,32 +62,35 @@ jobs:
           FIRELY_TERMINAL_VALIDATOR_ENGINE: netsdk
           PATH_TO_QUALITY_CONTROL_RULES: qc/custom
           EXPECTED_FAILS: VALIDATION_CONFORMANCE_DOTNET
-      - name: Assert action outcome and fhir invocations
+      - name: Assert Firely Terminal invocations
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
-          echo "fhir calls:"; cat /tmp/fhir-calls.log || true
+          echo "calls:"; cat /tmp/fhir-calls.log || true
           if [ "$OUTCOME" != "success" ]; then
-            echo "FAIL: expected success"; exit 1
+            echo "FAIL: expected success"
+            exit 1
           fi
           if [ "${FHIR_VERSION:-}" != "4.0.1" ]; then
-            echo "FAIL: expected FHIR_VERSION=4.0.1, got '${FHIR_VERSION:-}'"; exit 1
+            echo "FAIL: expected FHIR_VERSION=4.0.1, got '${FHIR_VERSION:-}'"
+            exit 1
           fi
-          grep -qx 'login email=test@example.com password=dummy-password' /tmp/fhir-calls.log || { echo "FAIL: login missing"; exit 1; }
-          grep -qx 'spec R4' /tmp/fhir-calls.log || { echo "FAIL: spec R4 missing"; exit 1; }
-          grep -qx 'restore' /tmp/fhir-calls.log || { echo "FAIL: restore missing"; exit 1; }
-          grep -qx 'config validator netsdk' /tmp/fhir-calls.log || { echo "FAIL: validator engine not configured"; exit 1; }
-          CHECK_LINE=$(grep -E '^check qc/custom' /tmp/fhir-calls.log || true)
-          echo "check line: $CHECK_LINE"
-          if [ -z "$CHECK_LINE" ]; then
-            echo "FAIL: QC rules path not passed to fhir check"; exit 1
+          for expected in "fhir login email=test@example.com password=dummy-password" \
+                          "fhir spec R4" "fhir restore" "fhir config validator netsdk" \
+                          "fhir check qc/custom"; do
+            if ! grep -qF -- "$expected" /tmp/fhir-calls.log; then
+              echo "FAIL: missing call '$expected'"
+              exit 1
+            fi
+          done
+          if grep -E '^fhir check qc/custom' /tmp/fhir-calls.log | grep -q -- '--fail'; then
+            echo "FAIL: --fail should be dropped with EXPECTED_FAILS=VALIDATION_CONFORMANCE_DOTNET"
+            exit 1
           fi
-          if echo "$CHECK_LINE" | grep -q -- '--failOn'; then
-            echo "FAIL: --failOn should be dropped with EXPECTED_FAILS=VALIDATION_CONFORMANCE_DOTNET"; exit 1
-          fi
-          if ! echo "$CHECK_LINE" | grep -q -- '--output'; then
-            echo "FAIL: --output missing"; exit 1
+          if grep -q '^dotnet tool install' /tmp/fhir-calls.log; then
+            echo "FAIL: should not install Firely Terminal when fhir is on PATH"
+            exit 1
           fi
           echo "PASS"
       - name: Cleanup

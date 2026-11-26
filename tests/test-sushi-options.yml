@@ -6,15 +6,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Set up fake npm, sudo and sushi
+      - name: Set up fake npm / sudo / sushi
         run: |
-          rm -f package.json sushi-config.yaml /tmp/sushi-calls.log /tmp/sudo-calls.log
-          FAKEBIN="$RUNNER_TEMP/fakebin-sushi"
+          rm -f sushi-config.yaml package.json /tmp/sushi-calls.log /tmp/sudo-calls.log
+          FAKEBIN="$RUNNER_TEMP/fakebin"
           mkdir -p "$FAKEBIN"
           cat > "$FAKEBIN/npm" <<'EOF'
           #!/bin/sh
           if [ "$1" = "--version" ]; then echo "10.0.0"; exit 0; fi
-          echo "npm $*" >> /tmp/sudo-calls.log
           exit 0
           EOF
           cat > "$FAKEBIN/sudo" <<'EOF'
@@ -25,7 +24,8 @@ jobs:
           cat > "$FAKEBIN/sushi" <<'EOF'
           #!/bin/sh
           if [ "$1" = "-v" ]; then echo "SUSHI v3.21.1"; exit 0; fi
-          echo "$# $*" >> /tmp/sushi-calls.log
+          echo "ARGS:$*" >> /tmp/sushi-calls.log
+          for a in "$@"; do echo "ARG:[$a]" >> /tmp/sushi-calls.log; done
           exit 0
           EOF
           chmod +x "$FAKEBIN/npm" "$FAKEBIN/sudo" "$FAKEBIN/sushi"
@@ -33,32 +33,35 @@ jobs:
       - id: action
         uses: .
         with:
-          PATH_TO_CONFORMANCE_RESOURCES: fsh-generated/resources
+          PATH_TO_CONFORMANCE_RESOURCES: fhir-conformance
           SIMPLIFIER_USERNAME: test@example.com
           SIMPLIFIER_PASSWORD: dummy-password
           DOTNET_VALIDATION_ENABLED: 'false'
           JAVA_VALIDATION_ENABLED: 'false'
           SUSHI_ENABLED: 'true'
           SUSHI_VERSION: '3.21.1'
-          SUSHI_OPTIONS: 'my-fsh-project --snapshot'
-      - name: Assert sushi invoked with split options
+          SUSHI_OPTIONS: 'build --snapshot'
+      - name: Assert sushi invoked with SUSHI_OPTIONS split into args
         env:
           OUTCOME: ${{ steps.action.outcome }}
         run: |
           echo "outcome: $OUTCOME"
-          echo "sudo calls:"; cat /tmp/sudo-calls.log || true
           echo "sushi calls:"; cat /tmp/sushi-calls.log || true
+          echo "sudo calls:"; cat /tmp/sudo-calls.log || true
           if [ "$OUTCOME" != "success" ]; then
-            echo "FAIL: expected success"; exit 1
+            echo "FAIL: expected success"
+            exit 1
+          fi
+          if [ "$(grep -c '^ARGS:' /tmp/sushi-calls.log)" -ne 1 ]; then
+            echo "FAIL: expected exactly one sushi run"
+            exit 1
+          fi
+          if ! grep -qx 'ARG:\[build\]' /tmp/sushi-calls.log || ! grep -qx 'ARG:\[--snapshot\]' /tmp/sushi-calls.log; then
+            echo "FAIL: SUSHI_OPTIONS not passed as separate args"
+            exit 1
           fi
           if ! grep -q 'npm install -g fsh-sushi@3.21.1' /tmp/sudo-calls.log; then
-            echo "FAIL: fsh-sushi install not requested with SUSHI_VERSION"; exit 1
-          fi
-          CALLS=$(wc -l < /tmp/sushi-calls.log)
-          if [ "$CALLS" -ne 1 ]; then
-            echo "FAIL: expected exactly 1 sushi build call, got $CALLS"; exit 1
-          fi
-          if ! grep -qx '2 my-fsh-project --snapshot' /tmp/sushi-calls.log; then
-            echo "FAIL: SUSHI_OPTIONS not passed as two separate args"; exit 1
+            echo "FAIL: expected fsh-sushi@3.21.1 install"
+            exit 1
           fi
           echo "PASS"
